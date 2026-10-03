@@ -1,0 +1,34 @@
+{
+  "name": "setlo-app",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "abi": "node scripts/abi.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.1",
+    "jose": "6.2.12",
+    "next": "15.5.26",
+    "nodemailer": "7.0.13",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "viem": "2.56.9",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.7",
+    "@types/node": "22.20.4",
+    "@types/nodemailer": "7.0.12",
+    "@types/react": "19.3.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "15.5.26",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
