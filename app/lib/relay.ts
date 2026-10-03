@@ -147,7 +147,9 @@ async function write(chainId: number, request: unknown, attempts = 3): Promise<H
   }
 }
 
-export type RawLog = Pick<Log, "address" | "topics" | "data" | "transactionHash" | "logIndex">;
+export type RawLog = Pick<Log, "address" | "topics" | "data" | "transactionHash" | "logIndex"> & {
+  blockNumber?: bigint | null;
+};
 
 /**
  * Idempotent event processing shared by relayer receipts and the QuickNode webhook:
@@ -155,7 +157,7 @@ export type RawLog = Pick<Log, "address" | "topics" | "data" | "transactionHash"
  */
 export async function handleLogs(chainId: number, logs: readonly RawLog[]): Promise<void> {
   const { setlo } = getChain(chainId);
-  const toClaim = new Set<Address>();
+  const toClaim = new Map<Address, bigint>();
   for (const log of logs) {
     if (log.address.toLowerCase() !== setlo.toLowerCase() || !log.transactionHash || log.logIndex == null) continue;
     let ev;
@@ -182,27 +184,47 @@ export async function handleLogs(chainId: number, logs: readonly RawLog[]): Prom
       .select();
     if (!inserted?.length) continue;
 
-    if (ev.eventName === "Credited") toClaim.add(ev.args.recipient);
-    else await notifyPayout(chainId, ev.args.recipient, ev.args.amount, log.transactionHash);
+    if (ev.eventName === "Credited") {
+      const block = log.blockNumber ?? BigInt(0);
+      const prev = toClaim.get(ev.args.recipient) ?? BigInt(0);
+      toClaim.set(ev.args.recipient, block > prev ? block : prev);
+    } else await notifyPayout(chainId, ev.args.recipient, ev.args.amount, log.transactionHash);
   }
-  for (const recipient of toClaim) await claimIfOwed(chainId, recipient);
+  for (const [recipient, block] of toClaim) await claimIfOwed(chainId, recipient, block);
 }
 
-async function claimIfOwed(chainId: number, recipient: Address) {
-  const owed = await publicClient(chainId).readContract({
-    address: getChain(chainId).setlo,
-    abi: setloAbi,
-    functionName: "claimable",
-    args: [recipient],
-  });
-  if (owed === BigInt(0)) return;
-  try {
-    await submit(chainId, "claimFor", [recipient]);
-  } catch (e) {
-    // A frozen recipient must not block anyone else's claim; it can still `claim()` itself later.
-    console.error("claimFor failed", recipient, e);
+const CLAIM_ATTEMPTS = 4;
+
+/**
+ * Load-balanced RPC nodes can lag the block that credited the recipient, so a read of `claimable` (or the
+ * `claimFor` simulation) can still see zero. Wait for the node to reach that block and retry on zero.
+ */
+async function claimIfOwed(chainId: number, recipient: Address, creditedAt: bigint) {
+  const client = publicClient(chainId);
+  for (let attempt = 1; attempt <= CLAIM_ATTEMPTS; attempt++) {
+    if (attempt > 1) await sleep(1000 * (attempt - 1));
+    if ((await client.getBlockNumber({ cacheTime: 0 })) < creditedAt) continue;
+    const owed = await client.readContract({
+      address: getChain(chainId).setlo,
+      abi: setloAbi,
+      functionName: "claimable",
+      args: [recipient],
+    });
+    if (owed === BigInt(0)) continue;
+    try {
+      await submit(chainId, "claimFor", [recipient]);
+      return;
+    } catch (e) {
+      if (e instanceof HttpError && e.message === "NothingToClaim" && attempt < CLAIM_ATTEMPTS) continue;
+      // A frozen recipient must not block anyone else's claim; it can still `claim()` itself later.
+      console.error("claimFor failed", recipient, e);
+      return;
+    }
   }
+  console.error("claimFor skipped: nothing claimable after retries", recipient);
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function notifyPayout(chainId: number, recipient: Address, amount: bigint, hash: Hash) {
   const { data } = await db()
