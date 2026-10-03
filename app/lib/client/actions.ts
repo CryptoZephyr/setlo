@@ -125,10 +125,21 @@ export function retryPayout(chainId: number, recipient: Address) {
   return apiFetch<RelayResult>("/api/payouts/retry", { body: { chainId, recipient } });
 }
 
-export function faucet(chainId: number, address: Address, kind: "gas" | "usdg", amount?: bigint) {
-  return apiFetch<{ sent: string; hash?: Hex; explorer?: string; reason?: string }>("/api/faucet", {
+export async function faucet(chainId: number, address: Address, kind: "gas" | "usdg", amount?: bigint) {
+  const r = await apiFetch<{ sent: string; hash?: Hex; explorer?: string; reason?: string }>("/api/faucet", {
     body: { chainId, address, kind, amount: amount?.toString() },
   });
+  if (kind === "gas" && r.hash) await untilVisible(chainId, r.hash);
+  return r;
+}
+
+/** The browser sends through a different RPC than the server, which can lag behind by a few blocks. */
+async function untilVisible(chainId: number, hash: Hex) {
+  const c = browserClient(chainId);
+  for (let i = 0; i < 20; i++) {
+    if (await c.getTransactionReceipt({ hash }).then(() => true, () => false)) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
 }
 
 // ------------------------------------------------------------------ agency transactions (agency pays gas)
