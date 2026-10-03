@@ -25,3 +25,9 @@ USDG is pinned per chain in `script/Deploy.s.sol` (Arbitrum Sepolia 421614, Robi
 ```sh
 OWNER_WALLET_ADDRESS=0x... forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $SETLO_PRIVATE_KEY --broadcast
 ```
+
+## Deployments
+
+| Chain | SetloPackages | USDG |
+| --- | --- | --- |
+| Arbitrum Sepolia (421614) | [`0xccf304db9ab8607b379b0f7f87cbb4d269a1de73`](https://sepolia.arbiscan.io/address/0xccf304db9ab8607b379b0f7f87cbb4d269a1de73) (Sourcify exact match) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |
