@@ -42,7 +42,7 @@ The same address on both chains (deployer nonce 0). Both are Sourcify exact matc
 ```sh
 export SETLO_ADDRESS=0xccf304db9ab8607b379b0f7f87cbb4d269a1de73
 # Package A: permit funding, relayed accepts, auto-confirm, claims, relayed release.
-# Package B: funded, one accept, one decline (expires ~3 minutes later).
+# Package B (created first): funded, one accept, one decline (expires ~10 minutes later).
 PHASE=setup forge script script/E2E.s.sol --rpc-url $RPC_URL --private-key $SETLO_PRIVATE_KEY --broadcast --slow
 # After package B's acceptDeadline: expire, refund minus the earned hold fee.
 PHASE=expire PACKAGE_B=<id> forge script script/E2E.s.sol --rpc-url $RPC_URL --private-key $SETLO_PRIVATE_KEY --broadcast --slow

@@ -67,8 +67,8 @@ contract E2E is Script {
 
         vm.startBroadcast(clientPk);
         if (keccak256(bytes(phase)) == keccak256("setup")) {
-            _happyPath();
             _refundSetup();
+            _happyPath();
         } else {
             _refundExpire(vm.envUint("PACKAGE_B"));
         }
@@ -76,7 +76,7 @@ contract E2E is Script {
     }
 
     function _happyPath() internal {
-        uint256 start = usdg.balanceOf(client);
+        uint256 start = _pool();
         uint64 t = uint64(block.timestamp);
         SetloPackages.SlotInput[] memory s = new SetloPackages.SlotInput[](2);
         s[0] = SetloPackages.SlotInput(vm.addr(venuePk), true, 0.1e6, 0.01e6, 0.05e6, keccak256("e2e-venue"));
@@ -109,7 +109,7 @@ contract E2E is Script {
 
         _sweep(venuePk);
         _sweep(catererPk);
-        require(usdg.balanceOf(client) == start, "A: USDG not fully returned");
+        require(_pool() == start, "A: pool changed");
         console.log("package A released, all payouts claimed and swept back");
     }
 
@@ -118,7 +118,7 @@ contract E2E is Script {
         SetloPackages.SlotInput[] memory s = new SetloPackages.SlotInput[](2);
         s[0] = SetloPackages.SlotInput(vm.addr(venuePk), true, 0.05e6, 0.01e6, 0.02e6, keccak256("e2e-venue-b"));
         s[1] = SetloPackages.SlotInput(vm.addr(catererPk), true, 0.05e6, 0.01e6, 0.02e6, keccak256("e2e-caterer-b"));
-        uint256 id = setlo.createPackage(_params(t, 3 minutes, 10 minutes, 1 minutes), s);
+        uint256 id = setlo.createPackage(_params(t, 10 minutes, 20 minutes, 1 minutes), s);
         console.log("package B", id);
 
         uint256 amount = setlo.requiredFunding(id);
@@ -136,15 +136,18 @@ contract E2E is Script {
 
     function _refundExpire(uint256 id) internal {
         uint256 held = setlo.getPackage(id).held;
-        uint256 before = usdg.balanceOf(client);
+        uint256 before = _pool();
+        uint256 clientCredit = setlo.claimable(client);
+        uint256 venueCredit = setlo.claimable(vm.addr(venuePk));
         setlo.expirePackage(id);
         require(setlo.getPackage(id).status == SetloPackages.Status.Expired, "B not expired");
-        uint256 refund = setlo.claimable(client);
+        uint256 refund = setlo.claimable(client) - clientCredit;
+        require(setlo.claimable(vm.addr(venuePk)) - venueCredit == 0.01e6, "B: venue hold fee not credited");
         require(refund == held - 0.01e6, "B: refund != held - venue hold fee");
         setlo.claimFor(client);
         _claimSuppliers();
         _sweep(venuePk);
-        require(usdg.balanceOf(client) == before + held, "B: USDG not fully returned");
+        require(_pool() == before + held, "B: pool != before + held");
         console.log("package B expired; client refund", refund);
     }
 
@@ -167,6 +170,15 @@ contract E2E is Script {
             holdFeeCap: 0.02e6,
             sharedTermsHash: keccak256("e2e-shared-terms")
         });
+    }
+
+    /// @dev USDG the broadcaster can end up with from this script: its own balance plus everything
+    /// claimable by or held by the derived suppliers. Every run must leave it unchanged.
+    function _pool() internal view returns (uint256 total) {
+        address[3] memory who = [client, vm.addr(venuePk), vm.addr(catererPk)];
+        for (uint256 i; i < who.length; ++i) {
+            total += usdg.balanceOf(who[i]) + setlo.claimable(who[i]);
+        }
     }
 
     function _derive(string memory label) internal view returns (uint256) {
