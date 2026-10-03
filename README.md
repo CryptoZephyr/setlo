@@ -7,6 +7,8 @@ Setlo is conditional, multi-party booking and settlement for events, settled in 
 - Live app: https://setlo-mu.vercel.app (test networks, test USDG)
 - Try a real booking in two minutes: https://setlo-mu.vercel.app/demo
 - Documentation: https://setlo-mu.vercel.app/docs
+- Pitch video: https://youtu.be/RQBzFZ27YwI
+- Demo video: https://youtu.be/OjwOR2skvLM
 
 ![Setlo landing page](docs/screenshots/landing.jpg)
 
