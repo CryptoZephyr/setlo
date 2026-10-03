@@ -28,6 +28,22 @@ OWNER_WALLET_ADDRESS=0x... forge script script/Deploy.s.sol --rpc-url $RPC_URL -
 
 ## Deployments
 
+The same address on both chains (deployer nonce 0). Both are Sourcify exact matches.
+
 | Chain | SetloPackages | USDG |
 | --- | --- | --- |
-| Arbitrum Sepolia (421614) | [`0xccf304db9ab8607b379b0f7f87cbb4d269a1de73`](https://sepolia.arbiscan.io/address/0xccf304db9ab8607b379b0f7f87cbb4d269a1de73) (Sourcify exact match) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |
+| Arbitrum Sepolia (421614) | [`0xccf304db9ab8607b379b0f7f87cbb4d269a1de73`](https://sepolia.arbiscan.io/address/0xccf304db9ab8607b379b0f7f87cbb4d269a1de73) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |
+| Robinhood Chain Testnet (46630) | [`0xccf304db9ab8607b379b0f7f87cbb4d269a1de73`](https://explorer.testnet.chain.robinhood.com/address/0xccf304db9ab8607b379b0f7f87cbb4d269a1de73) | `0x7E955252E15c84f5768B83c41a71F9eba181802F` |
+
+## Live end-to-end run
+
+`script/E2E.s.sol` exercises a deployment with sub-dollar USDG amounts. The broadcaster acts as client, agency and relayer; suppliers are throwaway keys derived from it that only sign, and their payouts are swept back with EIP-3009, so the run ends with the broadcaster's USDG unchanged.
+
+```sh
+export SETLO_ADDRESS=0xccf304db9ab8607b379b0f7f87cbb4d269a1de73
+# Package A: permit funding, relayed accepts, auto-confirm, claims, relayed release.
+# Package B (created first): funded, one accept, one decline (expires ~10 minutes later).
+PHASE=setup forge script script/E2E.s.sol --rpc-url $RPC_URL --private-key $SETLO_PRIVATE_KEY --broadcast --slow
+# After package B's acceptDeadline: expire, refund minus the earned hold fee.
+PHASE=expire PACKAGE_B=<id> forge script script/E2E.s.sol --rpc-url $RPC_URL --private-key $SETLO_PRIVATE_KEY --broadcast --slow
+```
