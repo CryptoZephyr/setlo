@@ -33,8 +33,11 @@ export async function requireUser(req: Request): Promise<User> {
   if (!res.ok) throw new HttpError(401, "unknown user");
   const accounts = ((await res.json()) as { linked_accounts: LinkedAccount[] }).linked_accounts;
   const email = accounts.find((a) => a.type === "email")?.address?.toLowerCase() ?? null;
-  const wallet = accounts.find((a) => a.type === "wallet" && a.wallet_client_type === "privy")?.address;
-  const user: User = { id: sub, email, wallet: wallet ? getAddress(wallet) : null };
+  const embedded = accounts.filter((a) => a.type === "wallet" && a.wallet_client_type === "privy" && a.address).map((a) => getAddress(a.address!));
+  const { data: prev, error: prevError } = await db().from("profiles").select("wallet").eq("privy_id", sub).maybeSingle();
+  if (prevError) throw new HttpError(503, "Couldn't load your account. Try again.");
+  const registered = embedded.find((w) => w.toLowerCase() === (prev?.wallet as string | null | undefined)?.toLowerCase());
+  const user: User = { id: sub, email, wallet: registered ?? embedded[0] ?? null };
 
   await db()
     .from("profiles")

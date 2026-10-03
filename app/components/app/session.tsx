@@ -56,12 +56,25 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = (user?.wallet?.address ?? embedded?.address) as Address | undefined;
 
+  const hasEmbedded = !!user?.linkedAccounts.some((a) => a.type === "wallet" && a.walletClientType === "privy");
+  const creating = useRef(false);
   useEffect(() => {
-    if (!ready || !authenticated || !walletsReady || address) return;
-    createWallet().catch((e: unknown) => {
-      if (!String(e).includes("already has")) setError(friendly(e));
-    });
-  }, [ready, authenticated, walletsReady, address, createWallet]);
+    if (!authenticated) creating.current = false;
+    if (!ready || !authenticated || !walletsReady || address || creating.current) return;
+    if (hasEmbedded) {
+      const t = setTimeout(() => setError("Your payout account didn't load in this browser. Try again, or sign out and sign in again."), 15000);
+      return () => clearTimeout(t);
+    }
+    // Privy's createOnLogin usually provisions the wallet; this is a single delayed fallback.
+    const t = setTimeout(() => {
+      creating.current = true;
+      createWallet().catch((e: unknown) => {
+        creating.current = false;
+        if (!String(e).includes("already has")) setError(friendly(e));
+      });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [ready, authenticated, walletsReady, address, hasEmbedded, createWallet, attempt]);
 
   useEffect(() => {
     if (!authenticated || !address) return;
@@ -109,7 +122,7 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
   if (!ready || !authenticated) return <PageLoading label="Checking your sign-in" />;
   if (error && !session)
     return (
-      <ErrorState className="px-4 pt-24" title="Account setup didn't finish" action={<Button onPress={() => setAttempt((n) => n + 1)}>Try again</Button>}>
+      <ErrorState className="px-4 pt-24" title="Account setup didn't finish" action={<Button onPress={() => { setError(null); setAttempt((n) => n + 1); }}>Try again</Button>}>
         {error}
       </ErrorState>
     );

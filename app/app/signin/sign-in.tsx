@@ -1,6 +1,6 @@
 "use client";
 
-import { useLoginWithEmail, usePrivy } from "@privy-io/react-auth";
+import { useLoginWithEmail, useLoginWithOAuth, useLoginWithPasskey, usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,9 +16,14 @@ function safeNext(raw: string | null) {
   return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/app";
 }
 
+const QUICK_FAILED = (method: "Google" | "passkey") =>
+  `Couldn't sign in with ${method === "Google" ? "Google" : "a passkey"}. If you haven't turned on ${method} sign-in for your Setlo account yet, sign in with an email code first, then turn it on from your bookings page.`;
+
 export function SignIn() {
   const { ready, authenticated } = usePrivy();
   const { sendCode, loginWithCode, state } = useLoginWithEmail();
+  const { initOAuth, state: oauth } = useLoginWithOAuth();
+  const { loginWithPasskey } = useLoginWithPasskey();
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
@@ -33,6 +38,10 @@ export function SignIn() {
   useEffect(() => {
     if (ready && authenticated) router.replace(next);
   }, [ready, authenticated, router, next]);
+
+  useEffect(() => {
+    if (oauth.status === "error") setError(QUICK_FAILED("Google"));
+  }, [oauth.status]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -68,6 +77,17 @@ export function SignIn() {
           <Form className="mt-6 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void run(() => sendCode({ email: email.trim() })); }}>
             <TextField label="Email" type="email" autoComplete="email" inputMode="email" value={email} onChange={setEmail} isRequired />
             <Button type="submit" full pending={busy}>Email me a code</Button>
+            <div className="flex items-center gap-3 text-[13px] text-text-muted" aria-hidden>
+              <span className="h-px flex-1 bg-border" />
+              or, if you&apos;ve turned it on
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button intent="secondary" full pending={oauth.status === "loading"} isDisabled={busy} onPress={() => { setError(null); initOAuth({ provider: "google", disableSignup: true }).catch(() => setError(QUICK_FAILED("Google"))); }}>
+              Continue with Google
+            </Button>
+            <Button intent="secondary" full isDisabled={busy} onPress={() => void run(() => loginWithPasskey().catch((e: unknown) => { throw /cancel|denied|abort|not allowed/i.test(String(e)) ? new Error("The request was cancelled.") : new Error(QUICK_FAILED("passkey")); }))}>
+              Sign in with a passkey
+            </Button>
           </Form>
         ) : (
           <Form className="mt-6 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void run(() => loginWithCode({ code: code.trim() })); }}>
