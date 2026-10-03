@@ -17,7 +17,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ["email"],
+        loginMethods: ["email", "google", "passkey"],
         appearance: { theme: "light", accentColor: "#1F5E4B", logo: "/img/logo-128.png", landingHeader: "Sign in to Setlo" },
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" }, showWalletUIs: false },
         defaultChain: arbitrumSepolia,

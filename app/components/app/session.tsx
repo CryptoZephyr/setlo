@@ -56,12 +56,20 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = (user?.wallet?.address ?? embedded?.address) as Address | undefined;
 
+  const hasEmbedded = !!user?.linkedAccounts.some((a) => a.type === "wallet" && a.walletClientType === "privy");
+  const creating = useRef(false);
   useEffect(() => {
-    if (!ready || !authenticated || !walletsReady || address) return;
-    createWallet().catch((e: unknown) => {
-      if (!String(e).includes("already has")) setError(friendly(e));
-    });
-  }, [ready, authenticated, walletsReady, address, createWallet]);
+    if (!authenticated) creating.current = false;
+    if (!ready || !authenticated || !walletsReady || address || hasEmbedded || creating.current) return;
+    // Privy's createOnLogin usually provisions the wallet; this is a single delayed fallback.
+    const t = setTimeout(() => {
+      creating.current = true;
+      createWallet().catch((e: unknown) => {
+        if (!String(e).includes("already has")) setError(friendly(e));
+      });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [ready, authenticated, walletsReady, address, hasEmbedded, createWallet]);
 
   useEffect(() => {
     if (!authenticated || !address) return;
