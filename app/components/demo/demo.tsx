@@ -6,14 +6,15 @@ import type { Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Footer, Logo, NetworkBadge } from "@/components/app/shell";
 import { AddressLink, Deadlines, History, MoneyBreakdown, PaymentPanel, StaleBanner } from "@/components/booking/parts";
-import { ResultNotice, SupplierList } from "@/components/booking/shared";
+import { RecoveringNotice, ResultNotice, SupplierList } from "@/components/booking/shared";
 import { useAction } from "@/components/booking/use-action";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Select, Switch } from "@/components/ui/field";
-import { Card, Notice, StatusPill } from "@/components/ui/status";
+import { Card, Notice, Skeleton, StatusPill, Steps } from "@/components/ui/status";
+import { useToast } from "@/components/ui/toast";
 import { CHAINS } from "@/lib/chains";
-import { accept, amountDue, clientAction, createPackage, decline, expireNow, faucet, fund } from "@/lib/client/actions";
+import { accept, amountDue, clientAction, createPackage, decline, expireNow, faucet, fund, type OnStep } from "@/lib/client/actions";
 import { friendly } from "@/lib/client/errors";
 import { useChainState } from "@/lib/client/hooks";
 import { keySigner, type Signer } from "@/lib/client/signer";
@@ -36,6 +37,7 @@ const ROLES: { id: DemoRole; label: string }[] = [
   { id: "catering", label: "Catering" },
   { id: "agency", label: "Agency" },
 ];
+const SETUP_STEPS = ["Send the agency test ETH for its network fee", "Create the package onchain", "Send the demo client test USDG"];
 const SHARED = "Demo booking: 80-guest evening side event. Test network, test USDG only.";
 const SLOTS = [
   { name: "Harbour Loft (demo venue)", category: "venue" as const, deposit: BigInt(100_000), holdFee: BigInt(20_000), balance: BigInt(50_000), terms: "Venue hire 18:00–23:00, setup from 16:00." },
@@ -90,9 +92,11 @@ function metaFor(s: Stored, signers: Record<DemoRole, Signer>): PackageMeta {
 }
 
 export function Demo() {
+  const toast = useToast();
   const [stored, setStored] = useState<Stored | null>(null);
   const [role, setRole] = useState<DemoRole>("client");
-  const [setup, setSetup] = useState<string | null>(null);
+  const [phase, setPhase] = useState<number | null>(null);
+  const [failed, setFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setStored(load()), []);
   const save = (s: Stored) => {
@@ -108,37 +112,43 @@ export function Demo() {
   async function start() {
     if (!stored || !signers) return;
     setError(null);
+    setFailed(false);
     try {
       const { chainId } = stored;
-      setSetup("Sending the agency a little test ETH for its network fee…");
-      await faucet(chainId, signers.agency.address, "gas");
-      setSetup("Creating the package onchain…");
-      const now = Math.floor(Date.now() / 1000);
-      const c = await createPackage(
-        signers.agency,
-        chainId,
-        {
-          client: signers.client.address,
-          acceptDeadline: BigInt(now + 6 * 60),
-          confirmDeadline: BigInt(now + 7 * 60),
-          finalExpiry: BigInt(now + 8 * 60),
-          eventDate: BigInt(now + 9 * 60),
-          reviewWindow: BigInt(120),
-          minResponseWindow: BigInt(60),
-          agencyFee: AGENCY_FEE,
-          holdFeeCap: BigInt(50_000),
-          sharedTermsHash: termsHash(SHARED),
-        },
-        SLOTS.map((x, i) => ({ payee: signers[i === 0 ? "venue" : "catering"].address, required: true, deposit: x.deposit, holdFee: x.holdFee, balance: x.balance, termsHash: termsHash(x.terms) })),
-      );
-      save({ ...stored, packageId: c.packageId });
-      setSetup("Sending the client test USDG…");
+      let packageId = stored.packageId;
+      if (!packageId) {
+        setPhase(0);
+        await faucet(chainId, signers.agency.address, "gas");
+        setPhase(1);
+        const now = Math.floor(Date.now() / 1000);
+        const c = await createPackage(
+          signers.agency,
+          chainId,
+          {
+            client: signers.client.address,
+            acceptDeadline: BigInt(now + 6 * 60),
+            confirmDeadline: BigInt(now + 7 * 60),
+            finalExpiry: BigInt(now + 8 * 60),
+            eventDate: BigInt(now + 9 * 60),
+            reviewWindow: BigInt(120),
+            minResponseWindow: BigInt(60),
+            agencyFee: AGENCY_FEE,
+            holdFeeCap: BigInt(50_000),
+            sharedTermsHash: termsHash(SHARED),
+          },
+          SLOTS.map((x, i) => ({ payee: signers[i === 0 ? "venue" : "catering"].address, required: true, deposit: x.deposit, holdFee: x.holdFee, balance: x.balance, termsHash: termsHash(x.terms) })),
+        );
+        packageId = c.packageId;
+        save({ ...stored, packageId });
+      }
+      setPhase(2);
       await faucet(chainId, signers.client.address, "usdg", TOTAL);
       setRole("client");
+      setPhase(null);
+      toast({ tone: "ok", title: "Demo package ready", body: "You're viewing it as the client. Fund it to start." });
     } catch (e) {
       setError(friendly(e));
-    } finally {
-      setSetup(null);
+      setFailed(true);
     }
   }
 
@@ -164,18 +174,22 @@ export function Demo() {
             A real package on a test network with two suppliers and a 6-minute acceptance deadline. Switch roles to fund, accept or decline, and watch deposits release or the refund arrive. Test USDG has no value; the demo accounts live only in this browser.
           </p>
         </div>
-        {!stored || !signers ? null : !stored.packageId ? (
+        {!stored || !signers ? (
+          <Skeleton className="h-56 max-w-xl" />
+        ) : !stored.packageId || phase !== null ? (
           <Card className="flex max-w-xl flex-col gap-4">
             <Select
               label="Test network"
               value={String(stored.chainId)}
-              onChange={(v) => save({ ...stored, chainId: Number(v) })}
+              onChange={(v) => !stored.packageId && phase === null && save({ ...stored, chainId: Number(v) })}
               options={Object.values(CHAINS).map((c) => ({ id: String(c.chain.id), label: c.chain.name }))}
             />
             <p className="text-[15px]">The client funds {usdg(TOTAL)}: two supplier deposits and balances plus a {usdg(AGENCY_FEE)} agency fee.</p>
-            {error && <Notice tone="bad" title="Couldn't start the demo" action={<Button intent="secondary" onPress={() => void start()}>Try again</Button>}>{error}</Notice>}
-            {setup && <Notice tone="waiting">{setup}</Notice>}
-            <Button size="lg" pending={!!setup} onPress={() => void start()}>Start a fresh demo package</Button>
+            {phase !== null && <Steps steps={SETUP_STEPS} current={phase} failed={failed} />}
+            {error && <Notice tone="bad" title="Couldn't start the demo">{error} Trying again picks up where it stopped.</Notice>}
+            <Button size="lg" pending={phase !== null && !failed} onPress={() => void start()}>
+              {failed ? "Try again" : "Start a fresh demo package"}
+            </Button>
           </Card>
         ) : (
           <>
@@ -240,7 +254,7 @@ function DemoRoleView({
   const next = nextStep(state, appRole, slotIndex);
   const signer = signers[role];
   const disabled = !!act.busy || !!act.recovering;
-  const run = useCallback((label: string, fn: () => ReturnType<typeof fund>, ok: string) => void act.run(label, fn, ok), [act]);
+  const run = useCallback((label: string, fn: (step: OnStep) => ReturnType<typeof fund>, ok: string) => void act.run(label, fn, ok), [act]);
   const deadlinePassed = p.status === STATUS.Open && (now > p.confirmDeadline || (now > p.acceptDeadline && state.slots.some((x) => x.required && !x.accepted)));
 
   return (
@@ -251,34 +265,34 @@ function DemoRoleView({
           <p className="mt-2 text-[15px] text-text-muted">{st.detail}</p>
           <Notice tone={next.tone} className="mt-4" title="Next step for this role">{next.text}</Notice>
           {p.status === STATUS.Open && now < p.acceptDeadline && <p className="mt-3 text-[13px] text-text-muted">Acceptance closes in {duration(p.acceptDeadline - now)}.</p>}
-          <div className="mt-4"><ResultNotice result={act.result} chainId={state.chainId} /></div>
+          <div className="mt-4 flex flex-col gap-3"><RecoveringNotice op={act.recovering} /><ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} /></div>
 
           <div className="mt-4 flex flex-col gap-3">
             {role === "client" && p.status === STATUS.Open && amountDue(state) > BigInt(0) && (
               <>
                 <Switch isSelected={autoConfirm} onChange={setAutoConfirm}>Confirm automatically when every required supplier accepts</Switch>
-                <Button size="lg" isDisabled={disabled} pending={act.busy === "Fund"} onPress={() => run("Fund", async () => { await topUp(); return fund(signer, state, autoConfirm); }, "Funding approved onchain.")}>
+                <Button size="lg" isDisabled={disabled} pending={act.busy === "Fund"} onPress={() => run("Fund", async (step) => { step("Sending the demo client test USDG…"); await topUp(); return fund(signer, state, autoConfirm, step); }, "Funding approved onchain.")}>
                   Approve and send {usdg(amountDue(state))}
                 </Button>
               </>
             )}
             {role === "client" && p.status === STATUS.Open && state.ready && !p.autoConfirm && (
-              <Button size="lg" isDisabled={disabled} pending={act.busy === "Confirm"} onPress={() => run("Confirm", () => clientAction(signer, state, "Confirm"), "Booking confirmed onchain.")}>Confirm booking</Button>
+              <Button size="lg" isDisabled={disabled} pending={act.busy === "Confirm"} onPress={() => run("Confirm", (step) => clientAction(signer, state, "Confirm", step), "Booking confirmed onchain.")}>Confirm booking</Button>
             )}
             {role === "client" && p.status === STATUS.Confirmed && (
               <div className="flex flex-wrap gap-3">
-                <Button isDisabled={disabled} pending={act.busy === "Release"} onPress={() => run("Release", () => clientAction(signer, state, "Release"), "Balances released onchain.")}>Release balances</Button>
-                {now < p.eventDate && <Button intent="danger" isDisabled={disabled} pending={act.busy === "Cancel"} onPress={() => run("Cancel", () => clientAction(signer, state, "Cancel"), "Booking cancelled onchain.")}>Cancel booking</Button>}
+                <Button isDisabled={disabled} pending={act.busy === "Release"} onPress={() => run("Release", (step) => clientAction(signer, state, "Release", step), "Balances released onchain.")}>Release balances</Button>
+                {now < p.eventDate && <Button intent="danger" isDisabled={disabled} pending={act.busy === "Cancel"} onPress={() => run("Cancel", (step) => clientAction(signer, state, "Cancel", step), "Booking cancelled onchain.")}>Cancel booking</Button>}
               </div>
             )}
             {slotIndex !== null && p.status === STATUS.Open && !state.slots[slotIndex].accepted && !state.slots[slotIndex].declined && now <= p.acceptDeadline && (
               <div className="flex flex-wrap gap-3">
-                <Button size="lg" isDisabled={disabled} pending={act.busy === "Accept"} onPress={() => run("Accept", () => accept(signer, state, slotIndex), "Acceptance recorded onchain.")}>Accept terms</Button>
-                <Button size="lg" intent="secondary" isDisabled={disabled} pending={act.busy === "Decline"} onPress={() => run("Decline", () => decline(signer, state, slotIndex), "Decline recorded onchain.")}>Decline</Button>
+                <Button size="lg" isDisabled={disabled} pending={act.busy === "Accept"} onPress={() => run("Accept", (step) => accept(signer, state, slotIndex, step), "Acceptance recorded onchain.")}>Accept terms</Button>
+                <Button size="lg" intent="secondary" isDisabled={disabled} pending={act.busy === "Decline"} onPress={() => run("Decline", (step) => decline(signer, state, slotIndex, step), "Decline recorded onchain.")}>Decline</Button>
               </div>
             )}
             {deadlinePassed && (
-              <Button intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => run("Expire", () => expireNow(state.chainId, state.packageId), "Expiry submitted onchain.")}>Expire and refund now</Button>
+              <Button intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => run("Expire", (step) => expireNow(state.chainId, state.packageId, step), "Expiry submitted onchain.")}>Expire and refund now</Button>
             )}
           </div>
         </Card>

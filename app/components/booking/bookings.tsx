@@ -18,15 +18,19 @@ export function Bookings() {
   const [bookings, setBookings] = useState<BookingSummary[] | null>(null);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
+    setLoading(true);
     try {
       const [b, d] = await Promise.all([api<{ bookings: BookingSummary[] }>("/api/packages"), api<{ drafts: DraftRow[] }>("/api/drafts")]);
       setBookings(b.bookings);
       setDrafts(d.drafts);
+      setError(null);
     } catch (e) {
       setError(friendly(e));
+    } finally {
+      setLoading(false);
     }
   }, [api]);
   useEffect(() => void load(), [load]);
@@ -40,7 +44,7 @@ export function Bookings() {
         </div>
         <LinkButton href="/app/new">New package</LinkButton>
       </div>
-      {error && <Notice tone="bad" title="Couldn't load your bookings" action={<Button intent="secondary" onPress={() => void load()}>Try again</Button>}>{error}</Notice>}
+      {error && <Notice tone="bad" title="Couldn't load your bookings" action={<Button intent="secondary" pending={loading} onPress={() => void load()}>Try again</Button>}>{error}</Notice>}
       {drafts.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold">Drafts</h2>

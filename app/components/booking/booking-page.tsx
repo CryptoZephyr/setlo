@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "@/components/app/session";
 import { NetworkBadge, PageLoading } from "@/components/app/shell";
-import { Button } from "@/components/ui/button";
-import { Notice, Skeleton, StatusPill } from "@/components/ui/status";
+import { Button, LinkButton } from "@/components/ui/button";
+import { ErrorState, Notice, Skeleton, StatusPill } from "@/components/ui/status";
 import { ApiError } from "@/lib/client/api";
 import { friendly } from "@/lib/client/errors";
 import { useChainState } from "@/lib/client/hooks";
@@ -20,6 +20,7 @@ export function BookingPage({ bookingRef }: { bookingRef: string }) {
   const { api, email, logout } = useSession();
   const [detail, setDetail] = useState<BookingDetail | null>(null);
   const [error, setError] = useState<{ status: number; text: string } | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const loadDetail = useCallback(async () => {
     try {
@@ -40,21 +41,30 @@ export function BookingPage({ bookingRef }: { bookingRef: string }) {
 
   if (error && !detail)
     return (
-      <div className="mx-auto max-w-lg pt-10">
-        <Notice
-          tone="bad"
-          title={error.status === 403 ? "This booking isn't shared with this account" : error.status === 404 ? "Booking not found" : "Couldn't load this booking"}
-          action={
-            error.status === 403 ? (
-              <Button intent="secondary" onPress={() => void logout()}>Sign in with another email</Button>
-            ) : (
-              <Button intent="secondary" onPress={() => void loadDetail()}>Try again</Button>
-            )
-          }
-        >
-          {error.status === 403 ? `You're signed in as ${email}. ${error.text}` : error.text}
-        </Notice>
-      </div>
+      <ErrorState
+        title={error.status === 403 ? "This booking isn't shared with this account" : error.status === 404 ? "Booking not found" : "Couldn't load this booking"}
+        action={
+          error.status === 403 ? (
+            <Button intent="secondary" onPress={() => void logout()}>Sign in with another email</Button>
+          ) : error.status === 404 ? (
+            <LinkButton href="/app" intent="secondary">Go to your bookings</LinkButton>
+          ) : (
+            <Button
+              intent="secondary"
+              pending={retrying}
+              onPress={async () => {
+                setRetrying(true);
+                await loadDetail();
+                setRetrying(false);
+              }}
+            >
+              Try again
+            </Button>
+          )
+        }
+      >
+        {error.status === 403 ? `You're signed in as ${email}. ${error.text}` : error.text}
+      </ErrorState>
     );
   if (!detail) return <PageLoading label="Loading booking" />;
   const s = chain.state;

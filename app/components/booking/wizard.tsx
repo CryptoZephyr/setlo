@@ -6,10 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAddress } from "viem";
 import { useSession } from "@/components/app/session";
 import { PageLoading } from "@/components/app/shell";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Checkbox, DateTimeField, MoneyField, Select, Switch, TextArea, TextField } from "@/components/ui/field";
-import { Card, Notice, StatusPill } from "@/components/ui/status";
+import { Card, ErrorState, Notice, StatusPill } from "@/components/ui/status";
+import { useToast } from "@/components/ui/toast";
 import { CHAINS } from "@/lib/chains";
 import { account, createPackage, faucet } from "@/lib/client/actions";
 import { friendly } from "@/lib/client/errors";
@@ -112,6 +113,7 @@ export function Wizard() {
   const { api, signer } = useSession();
   const router = useRouter();
   const params = useSearchParams();
+  const toast = useToast();
   const [draftId, setDraftId] = useState<string | null>(params.get("draft"));
   const [chainId, setChainId] = useState<number>(421614);
   const [data, setData] = useState<DraftData | null>(params.get("draft") ? null : empty());
@@ -160,7 +162,12 @@ export function Wizard() {
     }
   }, [api, chainId, data, draftId, router, updatedAt]);
 
-  if (!data) return saveError ? <Notice tone="bad" title="Couldn't load this draft">{saveError}</Notice> : <PageLoading label="Loading draft" />;
+  if (!data)
+    return saveError ? (
+      <ErrorState title="Couldn't load this draft" action={<LinkButton href="/app" intent="secondary">Go to your bookings</LinkButton>}>{saveError}</ErrorState>
+    ) : (
+      <PageLoading label="Loading draft" />
+    );
   const set = (patch: Partial<DraftData>) => setData({ ...data, ...patch });
   const setSlot = (i: number, patch: Partial<DraftSlot>) => set({ slots: data.slots.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
 
@@ -305,7 +312,7 @@ export function Wizard() {
       <div className="flex flex-wrap justify-between gap-3">
         <Button intent="secondary" isDisabled={step === 0} onPress={() => setStep(step - 1)}>Back</Button>
         <div className="flex gap-3">
-          <Button intent="ghost" pending={saving} onPress={() => void save()}>Save draft</Button>
+          <Button intent="ghost" pending={saving} onPress={async () => { if (await save()) toast({ tone: "ok", title: "Draft saved", body: "You can come back to it from your bookings." }); }}>Save draft</Button>
           {step < 3 && <Button pending={saving} onPress={() => void next()}>Continue</Button>}
           {step === 3 && <Button isDisabled={!allReady(data, readiness)} onPress={() => setStep(4)}>Continue</Button>}
         </div>
@@ -317,6 +324,7 @@ export function Wizard() {
 type Api = ReturnType<typeof useSession>["api"];
 
 function Accounts({ api, draftId, data, readiness, setReadiness }: { api: Api; draftId: string; data: DraftData; readiness: Readiness[]; setReadiness: (r: Readiness[]) => void }) {
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendEmails, setSendEmails] = useState(true);
@@ -354,8 +362,20 @@ function Accounts({ api, draftId, data, readiness, setReadiness }: { api: Api; d
                 setBusy(true);
                 setError(null);
                 try {
-                  const r = await api<{ readiness: Readiness[] }>(`/api/drafts/${draftId}/setup-invites`, { method: "POST", body: { sendEmails } });
+                  const r = await api<{ readiness: Readiness[]; emailed: Record<string, boolean> }>(`/api/drafts/${draftId}/setup-invites`, { method: "POST", body: { sendEmails } });
                   setReadiness(r.readiness);
+                  const sent = Object.values(r.emailed).filter(Boolean).length;
+                  const pending = r.readiness.filter((x) => !x.wallet).length;
+                  toast({
+                    tone: "ok",
+                    title: "Setup links ready",
+                    body:
+                      sent === 0
+                        ? "Copy each link and send it to that person."
+                        : sent < pending
+                          ? `Emailed ${sent} of ${pending}. Copy and share the rest, and share all of them directly since email can land in spam.`
+                          : "Emailed too. Share the links directly as well, since email can land in spam.",
+                  });
                 } catch (e) {
                   setError(friendly(e));
                 } finally {
@@ -406,8 +426,11 @@ function Review({
   signer: ReturnType<typeof useSession>["signer"];
 }) {
   const storeKey = `setlo:created:${draftId}`;
+  const toast = useToast();
   const [eth, setEth] = useState<bigint | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [step, setStep] = useState<string | null>(null);
+  const [gasBusy, setGasBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ chainId: number; packageId: string; hash: string } | null>(null);
   const [sendEmails, setSendEmails] = useState(true);
@@ -438,6 +461,7 @@ function Review({
       },
     });
     localStorage.removeItem(storeKey);
+    toast({ tone: "ok", title: "Package created", body: "Invitations are ready to share from the booking page." });
     onCreated(r.id);
   }
 
@@ -463,16 +487,19 @@ function Review({
           sharedTermsHash: termsHash(data.sharedTermsText),
         },
         slots.map((s) => ({ payee: getAddress(wallet(s.key)!), required: s.required, deposit: s.dep, holdFee: s.hold, balance: s.bal, termsHash: termsHash(s.termsText) })),
+        setStep,
       );
       const rec = { chainId, packageId: c.packageId, hash: c.hash };
       localStorage.setItem(storeKey, JSON.stringify(rec));
       setCreated(rec);
       setBusy("register");
+      setStep("Saving names and terms, and creating the invitations…");
       await register(rec);
     } catch (e) {
       setError(friendly(e));
     } finally {
       setBusy(null);
+      setStep(null);
     }
   }
 
@@ -497,6 +524,11 @@ function Review({
         <li className="flex justify-between py-2.5 text-[15px]"><span>Agency fee</span><span className="tabular">{usdg(parseUsdg(data.agencyFee) ?? BigInt(0))}</span></li>
         <li className="flex justify-between py-2.5 font-semibold"><span>Client funds</span><span className="tabular">{usdg(total)}</span></li>
       </ul>
+      {busy && (
+        <Notice tone="waiting" busy title={busy === "create" ? "Creating the package onchain" : "Finishing setup"}>
+          {step ?? "Starting…"} Keep this page open.
+        </Notice>
+      )}
       {error && <Notice tone="bad" title={created ? "Created onchain, not yet registered" : "Package not created"}>{error}</Notice>}
       {created ? (
         <Notice
@@ -513,7 +545,28 @@ function Review({
             <Notice
               tone="waiting"
               title="Your account needs test ETH"
-              action={<Button intent="secondary" size="sm" onPress={async () => { try { await faucet(chainId, signer.address, "gas"); await loadGas(); } catch (e) { setError(friendly(e)); } }}>Get test ETH</Button>}
+              action={
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  pending={gasBusy}
+                  onPress={async () => {
+                    setGasBusy(true);
+                    setError(null);
+                    try {
+                      await faucet(chainId, signer.address, "gas");
+                      await loadGas();
+                      toast({ tone: "ok", title: "Test ETH received", body: "You can create the package now." });
+                    } catch (e) {
+                      setError(friendly(e));
+                    } finally {
+                      setGasBusy(false);
+                    }
+                  }}
+                >
+                  Get test ETH
+                </Button>
+              }
             >
               Creating the package is sent from your account and needs a small network fee.
             </Notice>

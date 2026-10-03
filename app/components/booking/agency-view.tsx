@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/dialog";
 import { DateTimeField, MoneyField, Select, TextArea, TextField } from "@/components/ui/field";
 import { Card, Notice, StatusPill } from "@/components/ui/status";
-import { account, expireNow, faucet, replaceSupplier, updateQuote, updateSharedTerms } from "@/lib/client/actions";
+import { useToast } from "@/components/ui/toast";
+import { account, expireNow, faucet, replaceSupplier, updateQuote, updateSharedTerms, type OnStep } from "@/lib/client/actions";
 import { friendly } from "@/lib/client/errors";
 import { parseUsdg, usdgInput } from "@/lib/money";
 import { chainNow, requiredProgress } from "@/lib/status";
@@ -29,6 +30,8 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
   const meta = useUnsavedChange(detail.meta.ref);
   const [acc, setAcc] = useState<AccountState | null>(null);
   const [gasMsg, setGasMsg] = useState<string | null>(null);
+  const [gasBusy, setGasBusy] = useState(false);
+  const toast = useToast();
   const p = state.pkg;
   const now = chainNow(state);
   const open = p.status === STATUS.Open;
@@ -55,7 +58,7 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
             {meta.error ?? "The onchain change went through, but Setlo couldn't save the readable names and terms. Save them before making another change."}
           </Notice>
         )}
-        <ResultNotice result={act.result} chainId={state.chainId} />
+        <ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} />
         {open && lowGas && (
           <Notice
             tone="waiting"
@@ -64,13 +67,18 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
               <Button
                 intent="secondary"
                 size="sm"
+                pending={gasBusy}
                 onPress={async () => {
                   setGasMsg(null);
+                  setGasBusy(true);
                   try {
                     await faucet(state.chainId, signer.address, "gas");
                     setAcc(await account(state.chainId, signer.address));
+                    toast({ tone: "ok", title: "Test ETH received", body: "You can change this package now." });
                   } catch (e) {
                     setGasMsg(friendly(e));
+                  } finally {
+                    setGasBusy(false);
                   }
                 }}
               >
@@ -140,7 +148,7 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
           <Card>
             <h2 className="text-lg font-semibold">The deadline has passed</h2>
             <p className="mt-1 text-[15px] text-text-muted">Expiry is submitted automatically while someone has this booking open. You can submit it now.</p>
-            <Button className="mt-4" intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => act.run("Expire", () => expireNow(state.chainId, state.packageId), "Expiry submitted onchain.")}>
+            <Button className="mt-4" intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => act.run("Expire", (step) => expireNow(state.chainId, state.packageId, step), "Expiry submitted onchain.")}>
               Expire now
             </Button>
           </Card>
@@ -182,7 +190,7 @@ function EditSheet({
   state: PackageState;
   onClose: () => void;
   record: (body: ChangeBody) => Promise<void>;
-  run: (label: string, fn: () => Promise<{ hash: string }>, ok: string) => void;
+  run: (label: string, fn: (step: OnStep) => Promise<{ hash: string }>, ok: string) => void;
 }) {
   const { signer, api } = useSession();
   const ref = detail.meta.ref;
@@ -230,8 +238,9 @@ function EditSheet({
         const text = terms;
         run(
           "Change shared terms",
-          async () => {
-            const r = await updateSharedTerms(signer, chainId, packageId, BigInt(eventDate), termsHash(text));
+          async (step) => {
+            const r = await updateSharedTerms(signer, chainId, packageId, BigInt(eventDate), termsHash(text), step);
+            step("Saving the readable terms…");
             await record({ kind: "shared", sharedTermsText: text });
             return r;
           },
@@ -242,8 +251,9 @@ function EditSheet({
         const i = edit.slot, text = terms;
         run(
           `Edit slot ${i + 1}`,
-          async () => {
-            const r = await updateQuote(signer, chainId, packageId, i, a);
+          async (step) => {
+            const r = await updateQuote(signer, chainId, packageId, i, a, step);
+            step("Saving the readable terms…");
             await record({ kind: "quote", slotIndex: i, termsText: text });
             return r;
           },
@@ -257,8 +267,9 @@ function EditSheet({
         const i = edit.slot, text = terms, n = name, em = email, cat = category;
         run(
           `Replace slot ${i + 1}`,
-          async () => {
-            const r = await replaceSupplier(signer, chainId, packageId, i, { ...a, payee });
+          async (step) => {
+            const r = await replaceSupplier(signer, chainId, packageId, i, { ...a, payee }, step);
+            step("Saving the new supplier's details and invitation…");
             await record({ kind: "replace", slotIndex: i, termsText: text, name: n, email: em, category: cat });
             return r;
           },

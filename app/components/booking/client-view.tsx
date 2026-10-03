@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/dialog";
 import { Checkbox, Switch } from "@/components/ui/field";
 import { Card, Notice } from "@/components/ui/status";
+import { useToast } from "@/components/ui/toast";
 import { account, amountDue, clientAction, expireNow, faucet, fund, InsufficientBalance } from "@/lib/client/actions";
 import { friendly } from "@/lib/client/errors";
 import { dateTime } from "@/lib/client/time";
@@ -24,6 +25,8 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
   const [autoConfirm, setAutoConfirm] = useState(true);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [faucetMsg, setFaucetMsg] = useState<string | null>(null);
+  const [faucetBusy, setFaucetBusy] = useState(false);
+  const toast = useToast();
   const p = state.pkg;
   const now = chainNow(state);
   const due = amountDue(state);
@@ -45,7 +48,7 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       <div className="flex flex-col gap-6">
         <RecoveringNotice op={act.recovering} />
-        <ResultNotice result={act.result} chainId={state.chainId} />
+        <ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} />
         {wrongAccount && (
           <Notice tone="bad" title="This booking names a different client account">
             The agency set up this booking for another payout account. Ask them to check the client email, or sign in with the email they used.
@@ -78,13 +81,18 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
                     <Button
                       intent="secondary"
                       size="sm"
+                      pending={faucetBusy}
                       onPress={async () => {
                         setFaucetMsg(null);
+                        setFaucetBusy(true);
                         try {
                           await faucet(state.chainId, signer.address, "usdg", due);
                           setAcc(await account(state.chainId, signer.address));
+                          toast({ tone: "ok", title: "Test USDG received", body: `${usdg(due)} is in your payout account. You can fund the booking now.` });
                         } catch (e) {
                           setFaucetMsg(friendly(e));
+                        } finally {
+                          setFaucetBusy(false);
                         }
                       }}
                     >
@@ -118,9 +126,9 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
               onPress={() =>
                 act.run(
                   "Fund",
-                  async () => {
+                  async (step) => {
                     try {
-                      return await fund(signer, state, autoConfirm);
+                      return await fund(signer, state, autoConfirm, step);
                     } catch (e) {
                       if (e instanceof InsufficientBalance) throw new Error(`You need ${usdg(e.needed)} and have ${usdg(e.available)}.`);
                       throw e;
@@ -142,7 +150,7 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
           <Card>
             <h2 className="text-lg font-semibold">Everyone accepted</h2>
             <p className="mt-1 text-[15px] text-text-muted">Confirming credits every deposit and the agency fee for payout. Balances stay held until after the event.</p>
-            <Button className="mt-4" full size="lg" isDisabled={disabled} pending={act.busy === "Confirm"} onPress={() => act.run("Confirm", () => clientAction(signer, state, "Confirm"), "Booking confirmed onchain.")}>
+            <Button className="mt-4" full size="lg" isDisabled={disabled} pending={act.busy === "Confirm"} onPress={() => act.run("Confirm", (step) => clientAction(signer, state, "Confirm", step), "Booking confirmed onchain.")}>
               Confirm booking
             </Button>
           </Card>
@@ -157,7 +165,7 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
                 : "Balances are held until after the event. You can release them early, or cancel before the event date."}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Button isDisabled={disabled} pending={act.busy === "Release"} onPress={() => act.run("Release", () => clientAction(signer, state, "Release"), "Balances released onchain and credited to suppliers for payout.")}>
+              <Button isDisabled={disabled} pending={act.busy === "Release"} onPress={() => act.run("Release", (step) => clientAction(signer, state, "Release", step), "Balances released onchain and credited to suppliers for payout.")}>
                 Release balances
               </Button>
               {now < p.eventDate && (
@@ -173,7 +181,7 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
           <Card>
             <h2 className="text-lg font-semibold">The deadline has passed</h2>
             <p className="mt-1 text-[15px] text-text-muted">Setlo submits the expiry automatically while this page is open. If it hasn&apos;t updated, submit it yourself.</p>
-            <Button className="mt-4" intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => act.run("Expire", () => expireNow(state.chainId, state.packageId), "Expiry submitted onchain. Your refund is credited for payout.")}>
+            <Button className="mt-4" intent="secondary" isDisabled={disabled} pending={act.busy === "Expire"} onPress={() => act.run("Expire", (step) => expireNow(state.chainId, state.packageId, step), "Expiry submitted onchain. Your refund is credited for payout.")}>
               Expire and refund now
             </Button>
           </Card>
@@ -206,7 +214,7 @@ export function ClientView({ detail, state, refresh }: { detail: BookingDetail; 
             intent="danger"
             onPress={() => {
               setCancelOpen(false);
-              void act.run("Cancel", () => clientAction(signer, state, "Cancel"), "Booking cancelled onchain. Remaining balances are credited back to you.");
+              void act.run("Cancel", (step) => clientAction(signer, state, "Cancel", step), "Booking cancelled onchain. Remaining balances are credited back to you.");
             }}
           >
             Cancel booking

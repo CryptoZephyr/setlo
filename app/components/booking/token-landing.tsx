@@ -6,7 +6,8 @@ import type { Address } from "viem";
 import { useSession } from "@/components/app/session";
 import { PageLoading } from "@/components/app/shell";
 import { Button, LinkButton } from "@/components/ui/button";
-import { Card, Notice } from "@/components/ui/status";
+import { Card, ErrorState } from "@/components/ui/status";
+import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/client/api";
 import { friendly } from "@/lib/client/errors";
 import { CopyButton } from "./parts";
@@ -21,8 +22,11 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<{ status: number; text: string } | null>(null);
 
+  const [retrying, setRetrying] = useState(false);
+  const toast = useToast();
+
   const load = useCallback(async () => {
-    setError(null);
+    setRetrying(true);
     try {
       if (kind === "invite") {
         const r = await api<{ ref: string }>(`/api/invites/${token}`);
@@ -32,16 +36,18 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
       }
     } catch (e) {
       setError({ status: e instanceof ApiError ? e.status : 0, text: friendly(e) });
+      return;
+    } finally {
+      setRetrying(false);
     }
+    setError(null);
   }, [api, kind, router, token]);
   useEffect(() => void load(), [load]);
 
   if (error) {
     const wrongEmail = error.status === 403;
     return (
-      <div className="mx-auto max-w-lg pt-10">
-        <Notice
-          tone="bad"
+      <ErrorState
           title={wrongEmail ? "This link was sent to a different email" : error.status === 410 ? "This invitation was replaced" : error.status === 404 ? "Link not found" : "Couldn't open this link"}
           action={
             wrongEmail ? (
@@ -49,13 +55,12 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
             ) : error.status === 404 || error.status === 410 ? (
               <LinkButton href="/app" intent="secondary">Go to your bookings</LinkButton>
             ) : (
-              <Button intent="secondary" onPress={() => void load()}>Try again</Button>
+              <Button intent="secondary" pending={retrying} onPress={() => void load()}>Try again</Button>
             )
           }
         >
           {wrongEmail ? `You're signed in as ${email}. ${error.text}.` : error.status === 410 ? "The agency sent a newer invitation for this slot. Ask them for the current link." : error.text}
-        </Notice>
-      </div>
+      </ErrorState>
     );
   }
   if (!setup) return <PageLoading label={kind === "invite" ? "Opening your invitation" : "Loading your setup link"} />;
@@ -79,6 +84,7 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
               setConfirming(true);
               try {
                 setSetup(await api<Setup>(`/api/setup/${token}`, { method: "POST" }));
+                toast({ tone: "ok", title: "Payout account confirmed", body: "The agency can now name it in the booking." });
               } catch (e) {
                 setError({ status: e instanceof ApiError ? e.status : 0, text: friendly(e) });
               } finally {

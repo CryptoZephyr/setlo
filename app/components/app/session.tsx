@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Address, EIP1193Provider, Hex } from "viem";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/status";
+import { ErrorState } from "@/components/ui/status";
 import { apiFetch } from "@/lib/client/api";
 import { friendly } from "@/lib/client/errors";
 import { providerSigner, type Signer } from "@/lib/client/signer";
@@ -86,25 +86,31 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
     [getAccessToken],
   );
 
+  const own = synced ? wallets.find((w) => w.walletClientType === "privy" && w.address.toLowerCase() === synced.toLowerCase()) : undefined;
+
   const session = useMemo<Session | null>(() => {
-    if (!synced || !embedded || !user?.email?.address) return null;
+    if (!synced || !own || !user?.email?.address) return null;
     const signer = providerSigner(
       synced,
-      () => embedded.getEthereumProvider() as Promise<EIP1193Provider>,
-      (id) => embedded.switchChain(id),
+      () => own.getEthereumProvider() as Promise<EIP1193Provider>,
+      (id) => own.switchChain(id),
       async (req) => (await signTypedData(JSON.parse(JSON.stringify(req)), { address: synced })).signature as Hex,
     );
     return { email: user.email.address.toLowerCase(), wallet: synced, signer, api, logout };
-  }, [synced, embedded, user, signTypedData, api, logout]);
+  }, [synced, own, user, signTypedData, api, logout]);
 
   if (!ready || !authenticated) return <PageLoading label="Checking your sign-in" />;
   if (error && !session)
     return (
-      <div className="mx-auto max-w-md p-6 pt-24">
-        <Notice tone="bad" title="Account setup didn't finish" action={<Button onPress={() => setAttempt((n) => n + 1)}>Try again</Button>}>
-          {error}
-        </Notice>
-      </div>
+      <ErrorState className="px-4 pt-24" title="Account setup didn't finish" action={<Button onPress={() => setAttempt((n) => n + 1)}>Try again</Button>}>
+        {error}
+      </ErrorState>
+    );
+  if (walletsReady && synced && !own)
+    return (
+      <ErrorState className="px-4 pt-24" title="Payout account not available" action={<Button onPress={() => logout()}>Sign out</Button>}>
+        This browser can&apos;t reach the payout account registered to your email ({synced}). Sign out and sign in again.
+      </ErrorState>
     );
   if (!session) return <PageLoading label="Setting up your payout account" detail="Setlo creates it for you. This takes a few seconds the first time." />;
   return <Ctx.Provider value={session}>{children}</Ctx.Provider>;
