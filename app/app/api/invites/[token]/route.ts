@@ -18,6 +18,7 @@ export const GET = handler(async (req, ctx) => {
     .eq("token", token)
     .maybeSingle();
   if (!invite) throw new HttpError(404, "invite not found");
+  if (invite.status === "revoked") throw new HttpError(410, "this invite was replaced by a newer one");
   if (user.email !== invite.email) throw new HttpError(403, `this invite was sent to ${mask(invite.email)}`);
 
   if (invite.status !== "opened") {
@@ -40,6 +41,7 @@ export const GET = handler(async (req, ctx) => {
     .insert({ event: `invite_opened_${invite.role}`, privy_id: user.id, chain_id: pkg.chain_id, package_id: pkg.package_id });
 
   return {
+    ref: pkg.id,
     role: invite.role,
     slotIndex: invite.slot_index,
     chainId: pkg.chain_id,

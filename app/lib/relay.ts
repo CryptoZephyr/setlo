@@ -152,7 +152,15 @@ export async function handleLogs(chainId: number, logs: readonly RawLog[]): Prom
     const { data: inserted } = await db()
       .from("processed_logs")
       .upsert(
-        { chain_id: chainId, tx_hash: log.transactionHash, log_index: log.logIndex, event: ev.eventName },
+        {
+          chain_id: chainId,
+          tx_hash: log.transactionHash,
+          log_index: log.logIndex,
+          event: ev.eventName,
+          package_id: ev.eventName === "Credited" ? ev.args.packageId.toString() : null,
+          recipient: ev.args.recipient.toLowerCase(),
+          amount: ev.args.amount.toString(),
+        },
         { onConflict: "chain_id,tx_hash,log_index", ignoreDuplicates: true },
       )
       .select();
