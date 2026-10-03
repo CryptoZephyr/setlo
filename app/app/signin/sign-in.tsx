@@ -17,7 +17,7 @@ function safeNext(raw: string | null) {
 }
 
 const QUICK_FAILED = (method: "Google" | "passkey") =>
-  `Couldn't sign in with ${method === "Google" ? "Google" : "a passkey"}. If you haven't turned on ${method} sign-in for your Setlo account yet, sign in with an email code first, then turn it on from your bookings page.`;
+  `Couldn't sign in with ${method === "Google" ? "Google" : "a passkey"}. If you haven't turned on ${method} sign-in for your Setlo account yet, sign in with an email code first, then turn it on from your Account page.`;
 
 export function SignIn() {
   const { ready, authenticated } = usePrivy();

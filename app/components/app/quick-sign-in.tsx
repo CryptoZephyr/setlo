@@ -23,7 +23,6 @@ export function QuickSignIn() {
   if (!user) return null;
   const google = user.google?.email;
   const passkeys = user.linkedAccounts.filter((a) => a.type === "passkey").length;
-  if (google && passkeys > 0 && !done) return null;
 
   async function addPasskey() {
     setBusy(true);
@@ -40,9 +39,9 @@ export function QuickSignIn() {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold">Sign in faster next time</h2>
+      <h2 className="text-lg font-semibold">Sign-in methods</h2>
       <p className="mt-1 text-[15px] text-text-muted">
-        Skip the email code when you come back. These sign in to this same account, so your bookings and payout account stay the same.
+        Email code always works. Add Google or a passkey to skip the code next time. They sign in to this same account, so your bookings and payout account stay the same.
       </p>
       {done && <Notice tone="ok" className="mt-4">{done}</Notice>}
       {error && <Notice tone="bad" className="mt-4">{error}</Notice>}
@@ -55,7 +54,7 @@ export function QuickSignIn() {
           </Button>
         )}
         {passkeys > 0 ? (
-          <p className="text-sm text-text-muted">Passkey sign-in is on.</p>
+          <p className="text-sm text-text-muted">Passkey sign-in is on ({passkeys === 1 ? "1 passkey" : `${passkeys} passkeys`}).</p>
         ) : (
           <Button intent="secondary" pending={busy} onPress={() => void addPasskey()}>
             Add a passkey

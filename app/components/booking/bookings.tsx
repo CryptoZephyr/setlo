@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { QuickSignIn } from "@/components/app/quick-sign-in";
 import { useSession } from "@/components/app/session";
 import { NetworkBadge } from "@/components/app/shell";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -92,7 +91,6 @@ export function Bookings() {
           </ul>
         )}
       </section>
-      <QuickSignIn />
     </div>
   );
 }
