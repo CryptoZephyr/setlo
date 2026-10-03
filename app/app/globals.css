@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Setlo light-mode tokens (Notion Design System, section 4). Dark values are future reference only. */
+@theme {
+  --color-bg: #fafaf7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f2f2ec;
+  --color-border: #e4e4dc;
+  --color-border-strong: #c9c9bd;
+  --color-text: #16180f;
+  --color-text-muted: #62665a;
+  --color-brand: #1f5e4b;
+  --color-brand-hover: #184c3c;
+  --color-brand-soft: #e3eee9;
+  --color-brand-contrast: #ffffff;
+
+  --color-waiting: #8a5a00;
+  --color-waiting-soft: #fbf1dc;
+  --color-ok: #1f5e4b;
+  --color-ok-soft: #e3eee9;
+  --color-paid: #1d4f91;
+  --color-paid-soft: #e4ecf7;
+  --color-bad: #a3271f;
+  --color-bad-soft: #f8e5e3;
+  --color-neutral: #4f5347;
+  --color-neutral-soft: #ecece5;
+  --color-changed: #6a3d8f;
+  --color-changed-soft: #efe7f5;
+
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-card: 0 1px 2px rgb(22 24 15 / 0.04), 0 1px 1px rgb(22 24 15 / 0.03);
+  --shadow-pop: 0 12px 32px rgb(22 24 15 / 0.12), 0 2px 6px rgb(22 24 15 / 0.06);
+}
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    color: var(--color-text);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-brand-soft);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

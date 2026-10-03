@@ -2,6 +2,8 @@ import {
   BaseError,
   ContractFunctionRevertedError,
   decodeEventLog,
+  nonceManager,
+  NonceTooLowError,
   type AbiParameter,
   type Address,
   type Hash,
@@ -116,7 +118,7 @@ export async function submit(chainId: number, functionName: Relayable, args: unk
   } catch (e) {
     throw new HttpError(422, revertReason(e));
   }
-  const hash = await walletClient(chainId).writeContract(request as never);
+  const hash = await write(chainId, request);
   const packageId = packageIdOf(functionName, args);
   await db()
     .from("tx_log")
@@ -129,6 +131,20 @@ export async function submit(chainId: number, functionName: Relayable, args: unk
     .eq("hash", hash);
   if (receipt.status === "success") await handleLogs(chainId, receipt.logs);
   return { hash, status: receipt.status, explorer: txUrl(chainId, hash) };
+}
+
+/** Another relayer instance may have used the locally tracked nonce; resync and retry before giving up. */
+async function write(chainId: number, request: unknown, attempts = 3): Promise<Hash> {
+  for (let i = 1; ; i++) {
+    try {
+      return await walletClient(chainId).writeContract(request as never);
+    } catch (e) {
+      const nonceTooLow = e instanceof BaseError && e.walk((x) => x instanceof NonceTooLowError) !== null;
+      if (!nonceTooLow || i >= attempts) throw e;
+      nonceManager.reset({ address: relayerAccount().address, chainId });
+      await new Promise((r) => setTimeout(r, 1000 * i));
+    }
+  }
 }
 
 export type RawLog = Pick<Log, "address" | "topics" | "data" | "transactionHash" | "logIndex">;
@@ -152,7 +168,15 @@ export async function handleLogs(chainId: number, logs: readonly RawLog[]): Prom
     const { data: inserted } = await db()
       .from("processed_logs")
       .upsert(
-        { chain_id: chainId, tx_hash: log.transactionHash, log_index: log.logIndex, event: ev.eventName },
+        {
+          chain_id: chainId,
+          tx_hash: log.transactionHash,
+          log_index: log.logIndex,
+          event: ev.eventName,
+          package_id: ev.eventName === "Credited" ? ev.args.packageId.toString() : null,
+          recipient: ev.args.recipient.toLowerCase(),
+          amount: ev.args.amount.toString(),
+        },
         { onConflict: "chain_id,tx_hash,log_index", ignoreDuplicates: true },
       )
       .select();

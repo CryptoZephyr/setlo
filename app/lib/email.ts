@@ -2,7 +2,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "./env";
 import { db } from "./supabase";
 
-export type Email = { to: string; subject: string; text: string; kind: "invite" | "payout" };
+export type Email = { to: string; subject: string; text: string; kind: "invite" | "payout" | "setup" };
 
 export interface EmailSender {
   send(msg: Email): Promise<void>;
@@ -58,5 +58,18 @@ export function payoutEmail(to: string, amount: string, link: string): Email {
     to,
     subject: `Setlo: ${amount} USDG paid out`,
     text: `${amount} USDG has been paid to your Setlo payout account.\n\nTransaction: ${link}\n`,
+  };
+}
+
+export function setupEmail(to: string, role: "supplier" | "client", title: string, link: string): Email {
+  const ask =
+    role === "supplier"
+      ? "An agency wants to add you as a supplier"
+      : "An agency is preparing a booking for you";
+  return {
+    kind: "setup",
+    to,
+    subject: `Setlo: set up your account for ${title}`,
+    text: `${ask} for "${title}".\n\nSet up your Setlo account so payments can reach you: ${link}\n\nSign in with this email address (${to}). Nothing is booked or paid yet.\nIf this landed in spam, please mark it as not spam.\n`,
   };
 }
