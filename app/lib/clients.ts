@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, type PublicClient, type WalletClient } from "viem";
+import { createPublicClient, createWalletClient, http, nonceManager, type PrivateKeyAccount, type PublicClient, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getChain } from "./chains";
 import { env } from "./env";
@@ -16,8 +16,12 @@ export function publicClient(chainId: number): PublicClient {
   return c;
 }
 
-export function relayerAccount() {
-  return privateKeyToAccount(env().RELAYER_PRIVATE_KEY as `0x${string}`);
+let relayer: PrivateKeyAccount | undefined;
+
+/** Tracks nonces locally: right after a receipt the RPC can still report the previous pending nonce. */
+export function relayerAccount(): PrivateKeyAccount {
+  relayer ??= privateKeyToAccount(env().RELAYER_PRIVATE_KEY as `0x${string}`, { nonceManager });
+  return relayer;
 }
 
 export function walletClient(chainId: number): WalletClient {
