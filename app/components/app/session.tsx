@@ -2,7 +2,7 @@
 
 import { useCreateWallet, usePrivy, useSignTypedData, useWallets } from "@privy-io/react-auth";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, EIP1193Provider, Hex } from "viem";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/status";
@@ -42,9 +42,16 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  const leaving = useRef(false);
   useEffect(() => {
-    if (ready && !authenticated) router.replace(`/signin?next=${encodeURIComponent(path)}`);
+    if (ready && !authenticated && !leaving.current) router.replace(`/signin?next=${encodeURIComponent(path)}`);
   }, [ready, authenticated, router, path]);
+
+  const signOut = useCallback(async () => {
+    leaving.current = true;
+    await logout();
+    router.replace(`/signin?signedout=1&next=${encodeURIComponent(path)}`);
+  }, [logout, router, path]);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = (user?.wallet?.address ?? embedded?.address) as Address | undefined;
@@ -96,8 +103,8 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
       (id) => own.switchChain(id),
       async (req) => (await signTypedData(JSON.parse(JSON.stringify(req)), { address: synced })).signature as Hex,
     );
-    return { email: user.email.address.toLowerCase(), wallet: synced, signer, api, logout };
-  }, [synced, own, user, signTypedData, api, logout]);
+    return { email: user.email.address.toLowerCase(), wallet: synced, signer, api, logout: signOut };
+  }, [synced, own, user, signTypedData, api, signOut]);
 
   if (!ready || !authenticated) return <PageLoading label="Checking your sign-in" />;
   if (error && !session)
@@ -108,7 +115,7 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
     );
   if (walletsReady && synced && !own)
     return (
-      <ErrorState className="px-4 pt-24" title="Payout account not available" action={<Button onPress={() => logout()}>Sign out</Button>}>
+      <ErrorState className="px-4 pt-24" title="Payout account not available" action={<Button onPress={() => void signOut()}>Sign out</Button>}>
         This browser can&apos;t reach the payout account registered to your email ({synced}). Sign out and sign in again.
       </ErrorState>
     );
