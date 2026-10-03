@@ -67,9 +67,13 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-border">
-        <p className="mx-auto max-w-6xl px-6 py-5 text-[13px] text-text-muted">
-          Test networks only. USDG here is test money with no value. Paxos can pause USDG or freeze addresses, including the Setlo contract.
-        </p>
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-5 text-[13px] text-text-muted sm:flex-row sm:items-center sm:justify-between">
+          <p>Test networks only. USDG here is test money with no value. Paxos can pause USDG or freeze addresses, including the Setlo contract.</p>
+          <nav aria-label="Legal" className="flex shrink-0 gap-4">
+            <Link className="hover:text-text" href="/terms">Terms and conditions</Link>
+            <Link className="hover:text-text" href="/privacy">Privacy policy</Link>
+          </nav>
+        </div>
       </div>
     </footer>
   );
