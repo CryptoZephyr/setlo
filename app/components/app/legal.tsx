@@ -8,8 +8,9 @@ export function LegalPage({ title, intro, sections }: { title: string; intro: st
   return (
     <>
       <header className="border-b border-border bg-bg">
-        <div className="mx-auto flex h-16 max-w-6xl items-center px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" aria-label="Setlo home"><Logo /></Link>
+          <Link href="/docs" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">Docs</Link>
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-14 sm:py-20">

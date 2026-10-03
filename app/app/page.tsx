@@ -55,6 +55,9 @@ export default function Landing() {
             <a href="#how-it-works" className="hidden min-h-11 items-center rounded-md px-3 text-bg/90 hover:text-bg sm:inline-flex">
               How it works
             </a>
+            <Link href="/docs" className="inline-flex min-h-11 items-center rounded-md px-3 text-bg/90 hover:text-bg">
+              Docs
+            </Link>
             <Link href="/signin" className="inline-flex min-h-11 items-center rounded-md px-3 text-bg/90 hover:text-bg">
               Sign in
             </Link>

@@ -46,6 +46,7 @@ export function Footer() {
           <Link className="text-text-muted hover:text-text" href="/#money">Where the money goes</Link>
           <Link className="text-text-muted hover:text-text" href="/#faq">FAQ</Link>
           <Link className="text-text-muted hover:text-text" href="/demo">Try the demo</Link>
+          <Link className="text-text-muted hover:text-text" href="/docs">Documentation</Link>
         </nav>
         <nav aria-label="Account" className="flex flex-col gap-2 text-sm">
           <p className="font-semibold">Account</p>
