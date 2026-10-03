@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Hex } from "viem";
-import { generatePrivateKey } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Footer, Logo, NetworkBadge } from "@/components/app/shell";
 import { AddressLink, Deadlines, History, MoneyBreakdown, PaymentPanel, StaleBanner } from "@/components/booking/parts";
 import { ResultNotice, SupplierList } from "@/components/booking/shared";
@@ -44,7 +44,15 @@ const SLOTS = [
 const AGENCY_FEE = BigInt(10_000);
 const TOTAL = SLOTS.reduce((a, s) => a + s.deposit + s.balance, AGENCY_FEE);
 
-const isKey = (v: unknown): v is Hex => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v);
+function isKey(v: unknown): v is Hex {
+  if (typeof v !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(v)) return false;
+  try {
+    privateKeyToAccount(v as Hex);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function parseStored(raw: string): Stored | null {
   try {
