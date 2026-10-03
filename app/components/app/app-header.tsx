@@ -20,6 +20,9 @@ export function AppHeader() {
           <Link href="/app/new" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">
             New package
           </Link>
+          <Link href="/docs" className="hidden min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted sm:inline-flex">
+            Docs
+          </Link>
           <Link href="/app/account" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted" title={email}>
             Account
           </Link>

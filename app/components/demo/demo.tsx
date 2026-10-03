@@ -164,7 +164,10 @@ export function Demo() {
       <header className="border-b border-border">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" aria-label="Setlo home"><Logo /></Link>
-          <Link href="/signin" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">Sign in</Link>
+          <nav className="flex items-center gap-1" aria-label="Main">
+            <Link href="/docs" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">Docs</Link>
+            <Link href="/signin" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">Sign in</Link>
+          </nav>
         </div>
       </header>
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
