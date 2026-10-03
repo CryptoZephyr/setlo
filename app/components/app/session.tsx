@@ -50,8 +50,8 @@ export function RequireSession({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     leaving.current = true;
     await logout();
-    router.replace("/signin?signedout=1");
-  }, [logout, router]);
+    router.replace(`/signin?signedout=1&next=${encodeURIComponent(path)}`);
+  }, [logout, router, path]);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = (user?.wallet?.address ?? embedded?.address) as Address | undefined;
