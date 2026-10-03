@@ -6,7 +6,7 @@ import type { Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Footer, Logo, NetworkBadge } from "@/components/app/shell";
 import { AddressLink, Deadlines, History, MoneyBreakdown, PaymentPanel, StaleBanner } from "@/components/booking/parts";
-import { ResultNotice, SupplierList } from "@/components/booking/shared";
+import { RecoveringNotice, ResultNotice, SupplierList } from "@/components/booking/shared";
 import { useAction } from "@/components/booking/use-action";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -265,7 +265,7 @@ function DemoRoleView({
           <p className="mt-2 text-[15px] text-text-muted">{st.detail}</p>
           <Notice tone={next.tone} className="mt-4" title="Next step for this role">{next.text}</Notice>
           {p.status === STATUS.Open && now < p.acceptDeadline && <p className="mt-3 text-[13px] text-text-muted">Acceptance closes in {duration(p.acceptDeadline - now)}.</p>}
-          <div className="mt-4"><ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} /></div>
+          <div className="mt-4 flex flex-col gap-3"><RecoveringNotice op={act.recovering} /><ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} /></div>
 
           <div className="mt-4 flex flex-col gap-3">
             {role === "client" && p.status === STATUS.Open && amountDue(state) > BigInt(0) && (
