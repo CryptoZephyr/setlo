@@ -20,9 +20,9 @@ export function AppHeader() {
           <Link href="/app/new" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted">
             New package
           </Link>
-          <span className="hidden max-w-48 truncate text-sm text-text-muted md:inline" title={email}>
-            {email}
-          </span>
+          <Link href="/app/account" className="inline-flex min-h-11 items-center rounded-md px-3 text-[15px] hover:bg-surface-muted" title={email}>
+            Account
+          </Link>
           <Button intent="ghost" size="sm" onPress={() => void logout()}>
             Sign out
           </Button>
