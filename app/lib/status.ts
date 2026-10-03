@@ -115,8 +115,11 @@ export function totals(state: PackageState) {
 /** Per-recipient payment evidence for this booking. */
 export function paymentFor(state: PackageState, address: string) {
   const a = address.toLowerCase();
-  const credited = sum(state.payments.filter((e) => e.kind === "Credited" && e.recipient.toLowerCase() === a).map((e) => e.amount));
-  const transfers = state.payments.filter((e) => e.kind === "Claimed" && e.recipient.toLowerCase() === a);
+  const credits = state.payments.filter((e) => e.kind === "Credited" && e.recipient.toLowerCase() === a);
+  const credited = sum(credits.map((e) => e.amount));
+  const since = credits.length ? credits[0].at : null;
+  // Claimed events are account-wide; only transfers after this booking's first credit can include it.
+  const transfers = since === null ? [] : state.payments.filter((e) => e.kind === "Claimed" && e.recipient.toLowerCase() === a && e.at >= since);
   const waiting = BigInt(state.claimable[a] ?? "0");
   return { credited, transfers, waiting };
 }

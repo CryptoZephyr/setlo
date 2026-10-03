@@ -39,22 +39,25 @@ export const POST = handler(async (req, ctx) => {
   let invite: { email: string; link: string; emailed: boolean } | null = null;
   if (b.kind === "shared") {
     if (termsHash(b.sharedTermsText) !== state.pkg.sharedTermsHash) throw new HttpError(409, "shared terms not updated onchain yet");
-    await db().from("packages").update({ terms_text: b.sharedTermsText }).eq("id", ref);
+    const r = await db().from("packages").update({ terms_text: b.sharedTermsText }).eq("id", ref);
+    if (r.error) throw r.error;
   } else {
     const slot = state.slots[b.slotIndex];
     if (!slot) throw new HttpError(400, "no such slot");
     if (termsHash(b.termsText) !== slot.termsHash) throw new HttpError(409, "slot terms not updated onchain yet");
     if (b.kind === "quote") {
-      await db().from("slots").update({ terms_text: b.termsText }).eq("package_ref", ref).eq("slot_index", b.slotIndex);
+      const r = await db().from("slots").update({ terms_text: b.termsText }).eq("package_ref", ref).eq("slot_index", b.slotIndex);
+      if (r.error) throw r.error;
     } else {
-      const { data: old } = await db()
-        .from("slots")
-        .select("payout_address")
+      const { data: setup } = await db()
+        .from("setup_invites")
+        .select("registered_wallet")
         .eq("package_ref", ref)
-        .eq("slot_index", b.slotIndex)
-        .single();
-      if (old && getAddress(old.payout_address) === getAddress(slot.payee)) throw new HttpError(409, "supplier not replaced onchain yet");
-      await db()
+        .eq("email", b.email)
+        .not("registered_wallet", "is", null);
+      if (!(setup ?? []).some((r) => getAddress(r.registered_wallet) === getAddress(slot.payee)))
+        throw new HttpError(409, "the onchain payee is not the payout account this email registered for this booking");
+      const u = await db()
         .from("slots")
         .update({
           supplier_name: b.name,
@@ -65,13 +68,27 @@ export const POST = handler(async (req, ctx) => {
         })
         .eq("package_ref", ref)
         .eq("slot_index", b.slotIndex);
-      await db().from("invites").update({ status: "revoked" }).eq("package_ref", ref).eq("slot_index", b.slotIndex);
-      const token = newToken();
-      await db().from("invites").insert({ token, package_ref: ref, role: "supplier", slot_index: b.slotIndex, email: b.email });
+      if (u.error) throw u.error;
+      const { data: active } = await db()
+        .from("invites")
+        .select("token, email")
+        .eq("package_ref", ref)
+        .eq("slot_index", b.slotIndex)
+        .neq("status", "revoked");
+      let token = (active ?? []).find((i) => i.email === b.email)?.token as string | undefined;
+      const fresh = !token;
+      if (!token) {
+        const rv = await db().from("invites").update({ status: "revoked" }).eq("package_ref", ref).eq("slot_index", b.slotIndex);
+        if (rv.error) throw rv.error;
+        token = newToken();
+        const ins = await db().from("invites").insert({ token, package_ref: ref, role: "supplier", slot_index: b.slotIndex, email: b.email });
+        if (ins.error) throw ins.error;
+      }
       const link = inviteLink(token);
-      const emailed = b.sendEmail
-        ? await sendEmail(inviteEmail(b.email, "supplier", row.title, link), { package: ref, role: "supplier", slot: b.slotIndex })
-        : false;
+      const emailed =
+        fresh && b.sendEmail
+          ? await sendEmail(inviteEmail(b.email, "supplier", row.title, link), { package: ref, role: "supplier", slot: b.slotIndex })
+          : false;
       invite = { email: b.email, link, emailed };
     }
   }

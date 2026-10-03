@@ -49,6 +49,18 @@ const empty = (): DraftData => ({
   slots: [newSlot()],
 });
 
+function emailFor(d: DraftData, key: string) {
+  return (key === "client" ? d.clientEmail : (d.slots.find((s) => s.key === key)?.email ?? "")).trim().toLowerCase();
+}
+
+/** The registered wallet for a participant, only if it was set up for their current email. */
+function walletFor(d: DraftData, readiness: Readiness[], key: string) {
+  const r = readiness.find((x) => x.key === key);
+  return r && r.email === emailFor(d, key) ? r.wallet : null;
+}
+
+const allReady = (d: DraftData, readiness: Readiness[]) => ["client", ...d.slots.map((s) => s.key)].every((k) => !!walletFor(d, readiness, k));
+
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 const hours = (s: string) => (/^\d+(\.\d+)?$/.test(s.trim()) ? Math.round(Number(s) * 3600) : null);
 
@@ -277,7 +289,8 @@ export function Wizard() {
 
       {step === 3 && draftId && <Accounts api={api} draftId={draftId} data={data} readiness={readiness} setReadiness={setReadiness} />}
 
-      {step === 4 && draftId && (
+      {step === 4 && draftId && !allReady(data, readiness) && <Notice tone="bad" title="Payout accounts changed">An email changed after setup. Go back to Payout accounts and create a new setup link.</Notice>}
+      {step === 4 && draftId && allReady(data, readiness) && (
         <Review
           data={data}
           chainId={chainId}
@@ -294,7 +307,7 @@ export function Wizard() {
         <div className="flex gap-3">
           <Button intent="ghost" pending={saving} onPress={() => void save()}>Save draft</Button>
           {step < 3 && <Button pending={saving} onPress={() => void next()}>Continue</Button>}
-          {step === 3 && <Button isDisabled={!readiness.length || readiness.some((r) => !r.wallet)} onPress={() => setStep(4)}>Continue</Button>}
+          {step === 3 && <Button isDisabled={!allReady(data, readiness)} onPress={() => setStep(4)}>Continue</Button>}
         </div>
       </div>
     </div>
@@ -308,7 +321,7 @@ function Accounts({ api, draftId, data, readiness, setReadiness }: { api: Api; d
   const [error, setError] = useState<string | null>(null);
   const [sendEmails, setSendEmails] = useState(true);
   const wantKeys = useMemo(() => ["client", ...data.slots.map((s) => s.key)], [data.slots]);
-  const current = readiness.filter((r) => wantKeys.includes(r.key) && (r.key === "client" ? r.email === data.clientEmail.trim().toLowerCase() : data.slots.find((s) => s.key === r.key)?.email.trim().toLowerCase() === r.email));
+  const current = readiness.filter((r) => wantKeys.includes(r.key) && r.email === emailFor(data, r.key));
   const complete = current.length === wantKeys.length;
 
   const poll = useCallback(async () => {
@@ -406,7 +419,7 @@ function Review({
   const loadGas = useCallback(() => account(chainId, signer.address).then((a) => setEth(BigInt(a.eth)), () => setEth(null)), [chainId, signer.address]);
   useEffect(() => void loadGas(), [loadGas]);
 
-  const wallet = (key: string) => readiness.find((r) => r.key === key)?.wallet ?? null;
+  const wallet = (key: string) => walletFor(data, readiness, key);
   const slots = data.slots.map((s) => ({ ...s, dep: parseUsdg(s.deposit)!, hold: parseUsdg(s.holdFee)!, bal: parseUsdg(s.balance)! }));
   const total = sum([...slots.map((s) => s.dep + s.bal), parseUsdg(data.agencyFee) ?? BigInt(0)]);
 
@@ -433,7 +446,7 @@ function Review({
     setBusy("create");
     try {
       const client = wallet("client");
-      if (!client) throw new Error("The client's payout account isn't ready.");
+      if (!client || !allReady(data, readiness)) throw new Error("Every payout account must be set up for the current emails. Go back to Payout accounts.");
       const c = await createPackage(
         signer,
         chainId,

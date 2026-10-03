@@ -26,6 +26,7 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
   const { signer } = useSession();
   const act = useAction(`${state.chainId}:${state.packageId}:agency`, refresh);
   const [edit, setEdit] = useState<Edit>(null);
+  const meta = useUnsavedChange(detail.meta.ref);
   const [acc, setAcc] = useState<AccountState | null>(null);
   const [gasMsg, setGasMsg] = useState<string | null>(null);
   const p = state.pkg;
@@ -45,6 +46,15 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       <div className="flex flex-col gap-6">
         <RecoveringNotice op={act.recovering} />
+        {meta.unsaved && (
+          <Notice
+            tone="changed"
+            title="Changed onchain, details not saved"
+            action={<Button intent="secondary" size="sm" pending={meta.saving} onPress={() => void meta.retry().then(refresh)}>Save details again</Button>}
+          >
+            {meta.error ?? "The onchain change went through, but Setlo couldn't save the readable names and terms. Save them before making another change."}
+          </Notice>
+        )}
         <ResultNotice result={act.result} chainId={state.chainId} />
         {open && lowGas && (
           <Notice
@@ -108,8 +118,8 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
               <div className="flex flex-wrap gap-2">
                 {state.slots.map((_, i) => (
                   <span key={i} className="flex gap-2">
-                    <Button intent="secondary" size="sm" isDisabled={disabled || lowGas} onPress={() => setEdit({ kind: "quote", slot: i })}>Edit slot {i + 1}</Button>
-                    <Button intent="ghost" size="sm" isDisabled={disabled || lowGas} onPress={() => setEdit({ kind: "replace", slot: i })}>Replace slot {i + 1}</Button>
+                    <Button intent="secondary" size="sm" isDisabled={disabled || lowGas || !!meta.unsaved} onPress={() => setEdit({ kind: "quote", slot: i })}>Edit slot {i + 1}</Button>
+                    <Button intent="ghost" size="sm" isDisabled={disabled || lowGas || !!meta.unsaved} onPress={() => setEdit({ kind: "replace", slot: i })}>Replace slot {i + 1}</Button>
                   </span>
                 ))}
               </div>
@@ -120,7 +130,7 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Shared terms</h2>
-            {open && <Button intent="secondary" size="sm" isDisabled={disabled || lowGas} onPress={() => setEdit({ kind: "shared" })}>Change date or terms</Button>}
+            {open && <Button intent="secondary" size="sm" isDisabled={disabled || lowGas || !!meta.unsaved} onPress={() => setEdit({ kind: "shared" })}>Change date or terms</Button>}
           </div>
           <div className="mt-2"><TermsText text={detail.meta.sharedTermsText} /></div>
           {open && <p className="mt-3 text-[13px] text-text-muted">Changing the date or shared terms asks every supplier and the client to approve again.</p>}
@@ -148,6 +158,7 @@ export function AgencyView({ detail, state, refresh }: { detail: BookingDetail; 
           detail={detail}
           state={state}
           onClose={() => setEdit(null)}
+          record={meta.record}
           run={(label, fn, ok) => {
             setEdit(null);
             void act.run(label, fn, ok);
@@ -163,12 +174,14 @@ function EditSheet({
   detail,
   state,
   onClose,
+  record,
   run,
 }: {
   edit: NonNullable<Edit>;
   detail: BookingDetail;
   state: PackageState;
   onClose: () => void;
+  record: (body: ChangeBody) => Promise<void>;
   run: (label: string, fn: () => Promise<{ hash: string }>, ok: string) => void;
 }) {
   const { signer, api } = useSession();
@@ -219,7 +232,7 @@ function EditSheet({
           "Change shared terms",
           async () => {
             const r = await updateSharedTerms(signer, chainId, packageId, BigInt(eventDate), termsHash(text));
-            await api(`/api/bookings/${ref}/changes`, { method: "POST", body: { kind: "shared", sharedTermsText: text } });
+            await record({ kind: "shared", sharedTermsText: text });
             return r;
           },
           "Shared terms changed onchain. Every supplier and the client must approve again.",
@@ -231,7 +244,7 @@ function EditSheet({
           `Edit slot ${i + 1}`,
           async () => {
             const r = await updateQuote(signer, chainId, packageId, i, a);
-            await api(`/api/bookings/${ref}/changes`, { method: "POST", body: { kind: "quote", slotIndex: i, termsText: text } });
+            await record({ kind: "quote", slotIndex: i, termsText: text });
             return r;
           },
           `Slot ${i + 1} changed onchain. That supplier and the client must approve again.`,
@@ -246,7 +259,7 @@ function EditSheet({
           `Replace slot ${i + 1}`,
           async () => {
             const r = await replaceSupplier(signer, chainId, packageId, i, { ...a, payee });
-            await api(`/api/bookings/${ref}/changes`, { method: "POST", body: { kind: "replace", slotIndex: i, termsText: text, name: n, email: em, category: cat } });
+            await record({ kind: "replace", slotIndex: i, termsText: text, name: n, email: em, category: cat });
             return r;
           },
           `Supplier replaced onchain. A new invite was created for ${em}; the client must approve again.`,
@@ -318,4 +331,46 @@ function EditSheet({
       </div>
     </Sheet>
   );
+}
+
+type ChangeBody = Record<string, unknown> & { kind: "shared" | "quote" | "replace" };
+
+/** Keeps the readable side of a confirmed onchain change until the server has saved it. */
+function useUnsavedChange(ref: string) {
+  const { api } = useSession();
+  const key = `setlo:unsaved:${ref}`;
+  const [unsaved, setUnsaved] = useState<ChangeBody | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const raw = localStorage.getItem(key);
+    if (raw) setUnsaved(JSON.parse(raw));
+  }, [key]);
+  const post = useCallback(async (body: ChangeBody) => {
+    await api(`/api/bookings/${ref}/changes`, { method: "POST", body });
+    localStorage.removeItem(key);
+    setUnsaved(null);
+    setError(null);
+  }, [api, key, ref]);
+  const record = useCallback(async (body: ChangeBody) => {
+    try {
+      await post(body);
+    } catch (e) {
+      localStorage.setItem(key, JSON.stringify(body));
+      setUnsaved(body);
+      setError(friendly(e));
+    }
+  }, [key, post]);
+  const retry = useCallback(async () => {
+    if (!unsaved) return;
+    setSaving(true);
+    try {
+      await post(unsaved);
+    } catch (e) {
+      setError(friendly(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [post, unsaved]);
+  return { unsaved, saving, error, record, retry };
 }

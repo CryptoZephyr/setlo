@@ -18,6 +18,7 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
   const { api, email, logout } = useSession();
   const router = useRouter();
   const [setup, setSetup] = useState<Setup | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<{ status: number; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -57,7 +58,39 @@ export function TokenLanding({ kind, token }: { kind: "invite" | "setup"; token:
       </div>
     );
   }
-  if (!setup) return <PageLoading label={kind === "invite" ? "Opening your invitation" : "Setting up your payout account"} />;
+  if (!setup) return <PageLoading label={kind === "invite" ? "Opening your invitation" : "Loading your setup link"} />;
+  if (!setup.registeredAt)
+    return (
+      <div className="mx-auto max-w-lg pt-6">
+        <Card>
+          <h1 className="font-display text-3xl">Confirm your payout account</h1>
+          <p className="mt-2 text-[15px] text-text-muted">
+            The agency wants to add you as the {setup.role} for <span className="font-medium text-text">{setup.title}</span>. Confirming lets them name this account in the booking. You still review and approve the booking itself later.
+          </p>
+          <div className="mt-5 rounded-md bg-surface-muted p-4">
+            <p className="text-[13px] text-text-muted">Payout account for {email}</p>
+            <p className="mt-1 font-mono text-[13px] break-all">{setup.wallet}</p>
+          </div>
+          <Button
+            className="mt-5"
+            full
+            pending={confirming}
+            onPress={async () => {
+              setConfirming(true);
+              try {
+                setSetup(await api<Setup>(`/api/setup/${token}`, { method: "POST" }));
+              } catch (e) {
+                setError({ status: e instanceof ApiError ? e.status : 0, text: friendly(e) });
+              } finally {
+                setConfirming(false);
+              }
+            }}
+          >
+            Use this payout account
+          </Button>
+        </Card>
+      </div>
+    );
   return (
     <div className="mx-auto max-w-lg pt-6">
       <Card>

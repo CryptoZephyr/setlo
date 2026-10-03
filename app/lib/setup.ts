@@ -13,15 +13,10 @@ type SetupRow = {
   registered_at: string | null;
 };
 
-/** A participant is ready once they opened their setup link, or already have a Setlo account for that email. */
+/** A participant is ready only once they opened their setup link and confirmed their payout account. */
 export async function readiness(rows: SetupRow[]): Promise<Readiness[]> {
-  const emails = [...new Set(rows.map((r) => r.email))];
-  const { data: profiles } = emails.length
-    ? await db().from("profiles").select("email, wallet").in("email", emails).not("wallet", "is", null)
-    : { data: [] };
-  const known = new Map((profiles ?? []).map((p) => [p.email as string, p.wallet as string]));
   return rows.map((r) => {
-    const w = r.registered_wallet ?? known.get(r.email) ?? null;
+    const w = r.registered_wallet;
     return {
       key: r.participant_key,
       role: r.role,

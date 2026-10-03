@@ -44,9 +44,27 @@ const SLOTS = [
 const AGENCY_FEE = BigInt(10_000);
 const TOTAL = SLOTS.reduce((a, s) => a + s.deposit + s.balance, AGENCY_FEE);
 
+const isKey = (v: unknown): v is Hex => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v);
+
+function parseStored(raw: string): Stored | null {
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (!v || typeof v !== "object") return null;
+    const o = v as { keys?: Record<string, unknown>; chainId?: unknown; packageId?: unknown };
+    const k = o.keys;
+    if (!k || !ROLES.every((r) => isKey(k[r.id]))) return null;
+    if (typeof o.chainId !== "number" || !Object.values(CHAINS).some((c) => c.chain.id === o.chainId)) return null;
+    if (o.packageId !== null && !(typeof o.packageId === "string" && /^\d+$/.test(o.packageId))) return null;
+    return { keys: { agency: k.agency as Hex, client: k.client as Hex, venue: k.venue as Hex, catering: k.catering as Hex }, chainId: o.chainId, packageId: o.packageId };
+  } catch {
+    return null;
+  }
+}
+
 function load(): Stored {
   const raw = typeof window !== "undefined" ? localStorage.getItem(KEY) : null;
-  if (raw) return JSON.parse(raw);
+  const parsed = raw ? parseStored(raw) : null;
+  if (parsed) return parsed;
   const keys = { agency: generatePrivateKey(), client: generatePrivateKey(), venue: generatePrivateKey(), catering: generatePrivateKey() };
   return { keys, chainId: 421614, packageId: null };
 }

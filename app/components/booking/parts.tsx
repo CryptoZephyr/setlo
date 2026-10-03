@@ -193,14 +193,14 @@ export function PaymentPanel({ state, address, title = "Your payments" }: { stat
         <ul className="flex flex-col gap-2">
           {transfers.map((t) => (
             <li key={t.txHash} className="flex flex-wrap items-center justify-between gap-2">
-              <StatusPill tone="paid">Paid to your payout account</StatusPill>
+              <StatusPill tone="paid">Transferred to your payout account</StatusPill>
               <span className="flex items-center gap-3">
                 <Amount value={t.amount} />
                 <TxLink chainId={state.chainId} hash={t.txHash}>Transfer</TxLink>
               </span>
             </li>
           ))}
-          <li className="text-[13px] text-text-muted">A transfer can include payouts from other bookings to the same account.</li>
+          <li className="text-[13px] text-text-muted">Payouts are sent per account, so a transfer can combine this booking with others.{waiting === BigInt(0) && credited > BigInt(0) ? " Nothing is left waiting for this account, so this booking's credit has been transferred." : ""}</li>
         </ul>
       )}
     </div>

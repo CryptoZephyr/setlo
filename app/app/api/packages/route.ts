@@ -64,7 +64,8 @@ export const POST = handler(async (req) => {
     throw new HttpError(400, "shared terms text does not match the onchain terms hash");
   }
 
-  const { data: row, error } = await db()
+  const cols = "id, chain_id, package_id, title, terms_text, client_email, agency_privy_id";
+  const ins = await db()
     .from("packages")
     .insert({
       chain_id: b.chainId,
@@ -75,10 +76,22 @@ export const POST = handler(async (req) => {
       client_email: b.clientEmail,
       draft_id: b.draftId ?? null,
     })
-    .select("id, chain_id, package_id, title, terms_text, client_email, agency_privy_id")
+    .select(cols)
     .single();
-  if (error?.code === "23505") throw new HttpError(409, "package already registered");
-  if (error) throw error;
+  let row = ins.data;
+  if (ins.error?.code === "23505") {
+    // Resume a registration that failed part-way for this agency.
+    const { data: existing, error: e2 } = await db()
+      .from("packages")
+      .select(cols)
+      .eq("chain_id", b.chainId)
+      .eq("package_id", b.packageId.toString())
+      .single();
+    if (e2) throw e2;
+    if (existing.agency_privy_id !== user.id) throw new HttpError(409, "package already registered");
+    row = existing;
+  } else if (ins.error) throw ins.error;
+  if (!row) throw new HttpError(500, "package not saved");
 
   const slotRows = b.slots.map((s) => ({
     package_ref: row.id,
@@ -89,24 +102,28 @@ export const POST = handler(async (req) => {
     category: s.category,
     terms_text: s.termsText ?? "",
   }));
-  const inviteRows = [
-    { token: newToken(), package_ref: row.id, role: "client" as const, slot_index: null, email: b.clientEmail },
-    ...b.slots.map((s) => ({
-      token: newToken(),
-      package_ref: row.id,
-      role: "supplier" as const,
-      slot_index: s.index,
-      email: s.email,
-    })),
-  ];
-  const r1 = await db().from("slots").insert(slotRows);
+  const r1 = await db().from("slots").upsert(slotRows, { onConflict: "package_ref,slot_index", ignoreDuplicates: true });
   if (r1.error) throw r1.error;
-  const r2 = await db().from("invites").insert(inviteRows);
-  if (r2.error) throw r2.error;
-  if (b.draftId) {
-    await db().from("drafts").update({ package_ref: row.id }).eq("id", b.draftId).eq("agency_privy_id", user.id);
+
+  const { data: prior, error: e3 } = await db().from("invites").select("token, role, slot_index, email").eq("package_ref", row.id).neq("status", "revoked");
+  if (e3) throw e3;
+  const fresh = !prior || prior.length === 0;
+  const inviteRows: { token: string; package_ref: string; role: "client" | "supplier"; slot_index: number | null; email: string }[] = fresh
+    ? [
+        { token: newToken(), package_ref: row.id, role: "client", slot_index: null, email: b.clientEmail },
+        ...b.slots.map((s) => ({ token: newToken(), package_ref: row.id, role: "supplier" as const, slot_index: s.index, email: s.email })),
+      ]
+    : prior.map((i) => ({ ...i, package_ref: row.id }));
+  if (fresh) {
+    const r2 = await db().from("invites").insert(inviteRows);
+    if (r2.error) throw r2.error;
   }
-  await snapshotVersion(row, "Created");
+  if (b.draftId) {
+    const r3 = await db().from("drafts").update({ package_ref: row.id }).eq("id", b.draftId).eq("agency_privy_id", user.id);
+    if (r3.error) throw r3.error;
+  }
+  const { count } = await db().from("package_versions").select("id", { count: "exact", head: true }).eq("package_ref", row.id);
+  if (!count) await snapshotVersion(row, "Created");
   await db()
     .from("funnel_events")
     .insert({ event: "package_registered", privy_id: user.id, chain_id: b.chainId, package_id: b.packageId.toString() });
@@ -114,7 +131,7 @@ export const POST = handler(async (req) => {
   const invites = await Promise.all(
     inviteRows.map(async (i) => {
       const link = inviteLink(i.token);
-      const emailed = b.sendEmails
+      const emailed = fresh && b.sendEmails
         ? await sendEmail(inviteEmail(i.email, i.role, b.title, link), { package: row.id, role: i.role, slot: i.slot_index })
         : false;
       return { role: i.role, slotIndex: i.slot_index, email: i.email, link, emailed };
