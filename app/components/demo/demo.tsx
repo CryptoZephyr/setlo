@@ -115,28 +115,32 @@ export function Demo() {
     setFailed(false);
     try {
       const { chainId } = stored;
-      setPhase(0);
-      await faucet(chainId, signers.agency.address, "gas");
-      setPhase(1);
-      const now = Math.floor(Date.now() / 1000);
-      const c = await createPackage(
-        signers.agency,
-        chainId,
-        {
-          client: signers.client.address,
-          acceptDeadline: BigInt(now + 6 * 60),
-          confirmDeadline: BigInt(now + 7 * 60),
-          finalExpiry: BigInt(now + 8 * 60),
-          eventDate: BigInt(now + 9 * 60),
-          reviewWindow: BigInt(120),
-          minResponseWindow: BigInt(60),
-          agencyFee: AGENCY_FEE,
-          holdFeeCap: BigInt(50_000),
-          sharedTermsHash: termsHash(SHARED),
-        },
-        SLOTS.map((x, i) => ({ payee: signers[i === 0 ? "venue" : "catering"].address, required: true, deposit: x.deposit, holdFee: x.holdFee, balance: x.balance, termsHash: termsHash(x.terms) })),
-      );
-      save({ ...stored, packageId: c.packageId });
+      let packageId = stored.packageId;
+      if (!packageId) {
+        setPhase(0);
+        await faucet(chainId, signers.agency.address, "gas");
+        setPhase(1);
+        const now = Math.floor(Date.now() / 1000);
+        const c = await createPackage(
+          signers.agency,
+          chainId,
+          {
+            client: signers.client.address,
+            acceptDeadline: BigInt(now + 6 * 60),
+            confirmDeadline: BigInt(now + 7 * 60),
+            finalExpiry: BigInt(now + 8 * 60),
+            eventDate: BigInt(now + 9 * 60),
+            reviewWindow: BigInt(120),
+            minResponseWindow: BigInt(60),
+            agencyFee: AGENCY_FEE,
+            holdFeeCap: BigInt(50_000),
+            sharedTermsHash: termsHash(SHARED),
+          },
+          SLOTS.map((x, i) => ({ payee: signers[i === 0 ? "venue" : "catering"].address, required: true, deposit: x.deposit, holdFee: x.holdFee, balance: x.balance, termsHash: termsHash(x.terms) })),
+        );
+        packageId = c.packageId;
+        save({ ...stored, packageId });
+      }
       setPhase(2);
       await faucet(chainId, signers.client.address, "usdg", TOTAL);
       setRole("client");
@@ -172,17 +176,17 @@ export function Demo() {
         </div>
         {!stored || !signers ? (
           <Skeleton className="h-56 max-w-xl" />
-        ) : !stored.packageId ? (
+        ) : !stored.packageId || phase !== null ? (
           <Card className="flex max-w-xl flex-col gap-4">
             <Select
               label="Test network"
               value={String(stored.chainId)}
-              onChange={(v) => save({ ...stored, chainId: Number(v) })}
+              onChange={(v) => !stored.packageId && phase === null && save({ ...stored, chainId: Number(v) })}
               options={Object.values(CHAINS).map((c) => ({ id: String(c.chain.id), label: c.chain.name }))}
             />
             <p className="text-[15px]">The client funds {usdg(TOTAL)}: two supplier deposits and balances plus a {usdg(AGENCY_FEE)} agency fee.</p>
             {phase !== null && <Steps steps={SETUP_STEPS} current={phase} failed={failed} />}
-            {error && <Notice tone="bad" title="Couldn't start the demo">{error} Nothing is lost; starting again picks up from a fresh package.</Notice>}
+            {error && <Notice tone="bad" title="Couldn't start the demo">{error} Trying again picks up where it stopped.</Notice>}
             <Button size="lg" pending={phase !== null && !failed} onPress={() => void start()}>
               {failed ? "Try again" : "Start a fresh demo package"}
             </Button>

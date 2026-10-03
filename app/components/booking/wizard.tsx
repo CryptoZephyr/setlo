@@ -362,9 +362,20 @@ function Accounts({ api, draftId, data, readiness, setReadiness }: { api: Api; d
                 setBusy(true);
                 setError(null);
                 try {
-                  const r = await api<{ readiness: Readiness[] }>(`/api/drafts/${draftId}/setup-invites`, { method: "POST", body: { sendEmails } });
+                  const r = await api<{ readiness: Readiness[]; emailed: Record<string, boolean> }>(`/api/drafts/${draftId}/setup-invites`, { method: "POST", body: { sendEmails } });
                   setReadiness(r.readiness);
-                  toast({ tone: "ok", title: "Setup links created", body: sendEmails ? "Emailed too. Share the links directly as well, since email can land in spam." : "Copy each link and send it to that person." });
+                  const sent = Object.values(r.emailed).filter(Boolean).length;
+                  const pending = r.readiness.filter((x) => !x.wallet).length;
+                  toast({
+                    tone: "ok",
+                    title: "Setup links ready",
+                    body:
+                      sent === 0
+                        ? "Copy each link and send it to that person."
+                        : sent < pending
+                          ? `Emailed ${sent} of ${pending}. Copy and share the rest, and share all of them directly since email can land in spam.`
+                          : "Emailed too. Share the links directly as well, since email can land in spam.",
+                  });
                 } catch (e) {
                   setError(friendly(e));
                 } finally {
