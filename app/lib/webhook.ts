@@ -36,6 +36,8 @@ export function extractLogs(payload: unknown): RawLog[] {
         data: o.data as RawLog["data"],
         transactionHash: o.transactionHash as RawLog["transactionHash"],
         logIndex: typeof o.logIndex === "string" ? Number(BigInt(o.logIndex)) : (o.logIndex as number),
+        blockNumber:
+          typeof o.blockNumber === "string" || typeof o.blockNumber === "number" ? BigInt(o.blockNumber) : undefined,
       });
       return;
     }

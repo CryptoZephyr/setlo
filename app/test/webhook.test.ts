@@ -25,4 +25,9 @@ describe("extractLogs", () => {
     const logs = extractLogs({ data: [{ receipts: [{ logs: [log] }] }] });
     expect(logs).toEqual([{ ...log, logIndex: 2 }]);
   });
+
+  it("parses hex block numbers", () => {
+    const log = { address: "0xabc", topics: ["0x1"], data: "0x", transactionHash: "0xdead", logIndex: 0, blockNumber: "0x10" };
+    expect(extractLogs([log])[0].blockNumber).toBe(BigInt(16));
+  });
 });
