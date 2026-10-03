@@ -1,20 +1,44 @@
 "use client";
 
 import { ShieldQuestion } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, Notice, StatusPill } from "@/components/ui/status";
 import { dateTime } from "@/lib/client/time";
 import { usdg } from "@/lib/money";
 import { slotStatus } from "@/lib/status";
 import { CATEGORIES, type PackageMeta, type PackageState, type VersionSnapshot } from "@/lib/types";
 import { AddressLink, Amount, TxLink } from "./parts";
-import type { ActionResult } from "./use-action";
+import type { ActionProgress, ActionResult } from "./use-action";
 
 export const categoryLabel = (c: string) => CATEGORIES.find((x) => x.id === c)?.label ?? "Other";
 
-export function ResultNotice({ result, chainId }: { result: ActionResult | null; chainId: number }) {
+/**
+ * One slot for an action's lifecycle: progress while it runs, then the outcome. The outcome is focused
+ * and scrolled into view, since the button that started it may be far down the page.
+ */
+export function ResultNotice({ result, progress, chainId, onDismiss }: { result: ActionResult | null; progress?: ActionProgress | null; chainId: number; onDismiss?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!result || !ref.current) return;
+    ref.current.focus({ preventScroll: true });
+    ref.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [result]);
+  if (progress)
+    return (
+      <Notice tone="waiting" busy title={`${progress.label} in progress`}>
+        {progress.step ?? "Starting…"} Keep this page open.
+      </Notice>
+    );
   if (!result) return null;
+  const ok = result.tone === "ok";
   return (
-    <Notice tone={result.tone === "ok" ? "ok" : "bad"}>
+    <Notice
+      ref={ref}
+      tone={ok ? "ok" : "bad"}
+      title={ok ? `${result.label}: done` : `${result.label} didn't go through`}
+      action={onDismiss && <Button intent="ghost" size="sm" onPress={onDismiss}>Dismiss</Button>}
+    >
       {result.text} {result.hash && <TxLink chainId={chainId} hash={result.hash} />}
     </Notice>
   );

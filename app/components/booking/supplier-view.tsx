@@ -32,7 +32,7 @@ export function SupplierView({ detail, state, refresh }: { detail: BookingDetail
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       <div className="flex flex-col gap-6">
         <RecoveringNotice op={act.recovering} />
-        <ResultNotice result={act.result} chainId={state.chainId} />
+        <ResultNotice result={act.result} progress={act.progress} chainId={state.chainId} onDismiss={() => act.setResult(null)} />
         {!mine && (
           <Notice tone="bad" title="This slot names a different payout account">
             The agency put another account on this slot (<AddressLink chainId={state.chainId} address={s.payee} />), so you can&apos;t accept it from this one. Ask the agency to send a new invite to the email you sign in with.
@@ -77,7 +77,7 @@ export function SupplierView({ detail, state, refresh }: { detail: BookingDetail
                 Accepting is a signed commitment to these exact terms. Your deposit is credited only when every required supplier accepts and the client&apos;s funding covers the package. No network fee for you.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Button size="lg" isDisabled={disabled} pending={act.busy === "Accept"} onPress={() => act.run("Accept", () => accept(signer, state, i), "Acceptance recorded onchain.")}>
+                <Button size="lg" isDisabled={disabled} pending={act.busy === "Accept"} onPress={() => act.run("Accept", (step) => accept(signer, state, i, step), "Acceptance recorded onchain.")}>
                   Accept these terms
                 </Button>
                 <Button size="lg" intent="secondary" isDisabled={disabled} onPress={() => setDeclineOpen(true)}>
@@ -111,7 +111,7 @@ export function SupplierView({ detail, state, refresh }: { detail: BookingDetail
             intent="danger"
             onPress={() => {
               setDeclineOpen(false);
-              void act.run("Decline", () => decline(signer, state, i), "Decline recorded onchain.");
+              void act.run("Decline", (step) => decline(signer, state, i, step), "Decline recorded onchain.");
             }}
           >
             Decline
