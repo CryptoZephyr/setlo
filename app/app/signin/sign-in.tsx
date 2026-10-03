@@ -20,7 +20,9 @@ export function SignIn() {
   const { ready, authenticated } = usePrivy();
   const { sendCode, loginWithCode, state } = useLoginWithEmail();
   const router = useRouter();
-  const next = safeNext(useSearchParams().get("next"));
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const signedOut = params.get("signedout") === "1";
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +52,17 @@ export function SignIn() {
         <Logo />
       </Link>
       <Card className="w-full max-w-md">
-        <h1 className="font-display text-3xl">{sent ? "Check your email" : "Sign in"}</h1>
+        <h1 className="font-display text-3xl">{sent ? "Check your email" : "Sign in or create an account"}</h1>
         <p className="mt-2 text-[15px] text-text-muted">
           {sent
             ? `We sent a 6-digit code to ${email}. It may take a minute, and can land in spam.`
             : invite
               ? "Use the email address your invitation was sent to. You'll go straight to it after signing in."
-              : "We'll email you a sign-in code. No password or crypto wallet needed."}
+              : "Enter your email and we'll send a code. No password or crypto wallet needed. If you've used Setlo before, you'll get back the same bookings and payout account."}
         </p>
+        {signedOut && !sent && !error && (
+          <Notice tone="ok" className="mt-5">You&apos;re signed out. Sign in with the same email to get back to your bookings.</Notice>
+        )}
         {error && <Notice tone="bad" className="mt-5">{error}</Notice>}
         {!sent ? (
           <Form className="mt-6 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void run(() => sendCode({ email: email.trim() })); }}>

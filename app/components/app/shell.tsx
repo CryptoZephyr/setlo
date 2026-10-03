@@ -38,7 +38,7 @@ export function Footer() {
       <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col gap-3">
           <Logo />
-          <p className="max-w-xs text-sm text-text-muted">Shared booking and settlement for event agencies, clients and suppliers. Testnet prototype, settled in test USDG.</p>
+          <p className="max-w-xs text-sm text-text-muted">Shared booking and settlement for event agencies, clients and suppliers. Settled in USDG.</p>
         </div>
         <nav aria-label="Product" className="flex flex-col gap-2 text-sm">
           <p className="font-semibold">Product</p>

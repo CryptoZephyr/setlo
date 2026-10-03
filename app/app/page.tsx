@@ -70,7 +70,7 @@ export default function Landing() {
             <div className="absolute inset-0 bg-gradient-to-t from-text/90 via-text/45 to-text/25" />
           </div>
           <div className="mx-auto w-full max-w-6xl px-6 pt-32 pb-16 sm:pb-24">
-            <p className="mb-5 inline-flex rounded-full bg-bg/15 px-3 py-1 text-[13px] text-bg backdrop-blur">Testnet prototype · settled in test USDG</p>
+            <p className="mb-5 inline-flex rounded-full bg-bg/15 px-3 py-1 text-[13px] text-bg backdrop-blur">Settled in USDG</p>
             <h1 className="max-w-3xl font-display text-[44px] leading-[1.02] text-bg sm:text-7xl">
               Book every supplier together. <em className="text-[#cfe4da]">Release deposits only when all of them say yes.</em>
             </h1>
@@ -85,6 +85,12 @@ export default function Landing() {
                 Create a package
               </LinkButton>
             </div>
+            <p className="mt-5 text-[15px] text-bg/85">
+              Already use Setlo?{" "}
+              <Link href="/signin" className="font-medium text-bg underline underline-offset-4 hover:text-[#cfe4da]">
+                Sign in
+              </Link>
+            </p>
           </div>
         </section>
 
