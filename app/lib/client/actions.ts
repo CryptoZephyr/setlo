@@ -157,7 +157,8 @@ async function send(signer: Signer, chainId: number, functionName: string, args:
     args: args as never,
   });
   const w = await signer.wallet(chainId);
-  const hash = await w.writeContract(request as never);
+  // Use the wallet's own account so a local key signs and sends a raw transaction.
+  const hash = await w.writeContract({ ...request, account: w.account ?? signer.address } as never);
   const receipt = await c.waitForTransactionReceipt({ hash, timeout: 90_000 });
   if (receipt.status !== "success") throw new Error("The transaction was reverted onchain.");
   return { hash, receipt };
